@@ -85,7 +85,20 @@
   - ✅ developer 完成：新增 `Resources\ZenTones.cs` / `Services\SoundService.cs`，改 `IReminderScheduler`+`ReminderScheduler`（新增 `RemindersDueBatch`）/`AppConfig`(`SoundEnabled`)/`ConfigStore`(`SaveSoundEnabled` 定向保存)/`TrayIconService`/`Strings`/`App.xaml.cs`/`docs`+`README`。0 警告 0 错误；SHA256 与原型一致；逻辑层 + 端到端 GUI 冒烟全过（含 S1/S2 未回归、`Views\*.xaml` 与 S4 锚点模型未被碰）。
   - ✅ reviewer 审查：**放行、无阻断项**。独立复核用了比 developer 更强的口径（`dotnet build -c Release` 出真实 dll + `Assembly.LoadFrom` 反射调用，验的是构建产物而非源文件），SHA256 仍逐字节一致；反射驱动私有 `Evaluate` 跑 10 个场景（含休眠 3h 唤醒、勿扰前入睡/勿扰后醒、暂停/恢复）零误发声零漏发声；1500 次播放句柄稳定无泄漏；UI 首帧与 1Hz 抖动 A/B 对照无回归。提出 A1/A2 + S1–S4。
   - ✅ developer 收尾（用户已确认三项取舍：文案改动作式、winmm 截断可接受、音量不可调可接受）：修 **A1**（惰性预热，关声音 CPU 6.17s→**0.90s**，≈对照组 0.87s）、**S2**（关声音打断当前播放，Core Audio 实测关后回落基线）、**S1**（冷路径只挂一个续体、只留最后一次请求）、**S3**（托盘动作式文案）、**A2/S4**（文档口径统一 + 补首次播放固有开销）。0 警告 0 错误，SHA256 未变，8 线程并发切换实测预热恒只跑一次。
-  - **未 commit、未 publish、未动用户运行中的实例（PID 54316）与 `config.json`（SHA256 全程 `f1b11fe7…0082` 未变）**。
+  - ✅ **v2.1 已上线**（2026-07-26 15:38）：commit `aedf9cc`（12 文件，+793/-26）已推到 `origin/main`；旧进程 PID 54316 已 `Stop-Process -Force`，新 exe（139.4MB，15:38:12）已覆盖 `publish\selfcontained\HealthMaster.exe` 并启动（PID 2716）。全程用户 `config.json` SHA256 `f1b11fe7…0082` **未变**，位置 `1353.6/769.6` 与勿扰设置原样保留。
+    - 备份：`HealthMaster.v2-nosound.exe.bak`（上线前的无声版）+ 既有 `HealthMaster.v1.1-emoji.exe.bak`，各 139.4MB，**待用户定夺是否删旧的那个**。
+    - 上线后实测（PID 2716）：空闲 CPU 0.32%（前几次采样 1.9%→1.0%→0.47%→0.32%，逐步收敛），工作集 157.6→172.3MB / 私有 96.8MB，增速逐次减半（0.31→0.019 MB/s）呈收敛态，句柄 505→491 稳中有降、线程 26–31 稳定——**判定为正常预热增长而非泄漏**，但长时间运行的内存曲线尚未观察，后续可复查。
+    - 📎 `git push` 走凭据管理器会弹框；本轮用用户一次性提供的 PAT 以完整 URL 推送（**未落进 `.git\config`**，已核对）。副作用：**用 URL 推送不更新 `origin/main` 追踪引用**，`git status` 会假报 ahead，需补 `git fetch origin`。
+    - ✅ 用户已复验托盘新菜单项「查了没问题」。仍待复验：真实到点时的听感。
+    - ✅ 已按用户要求删除 `HealthMaster.v1.1-emoji.exe.bak`；现存备份仅 `HealthMaster.v2-nosound.exe.bak`（上线前的无声版）。
+
+- 🔥 **重大踩坑：不要在沙箱化的 shell 里启动本应用**（2026-07-26，害用户以为悬浮窗丢了）
+  - 现象：`Start-Process HealthMaster.exe` 后进程活着、UI 线程响应 `WM_NULL`、`IsWindowVisible=True`、`GetWindowRect` 坐标正确、topmost z-order 正常、`DWMWA_CLOAKED=0`、**`PrintWindow(PW_RENDERFULLCONTENT)` 还能抓到完整正确的 HUD 药丸**——唯独**屏幕上什么都没有**，且鼠标完全穿透（`WindowFromPoint` 打到底下的窗口）。
+  - 根因：悬浮窗是 `AllowsTransparency=True` 的**分层窗口 + 软件渲染路径**，靠 `UpdateLayeredWindow` 提交画面。在沙箱化 shell 里启动时这条合成路径失效，而 `PrintWindow` 走的是进程内直接渲染可视树，**绕过了合成，所以照样成功**——两者一真一假，极易误判。
+  - 解法：**用 `dangerouslyDisableSandbox: true` 启动**（实测同一个 exe、同一份 config，换非沙箱启动立刻正常上屏并可命中）。`SetWindowPos`/`RedrawWindow` 强制重绘**无效**，别浪费时间。
+  - 📎 连带的排查坑：**`Graphics.CopyFromScreen` / 普通 `BitBlt` 抓不到分层窗口**，会拍出"窗口不存在"的假证据。必须用 `BitBlt` 加 `CAPTUREBLT`(0x40000000) 标志。我第一张截图就是这么误导自己的。
+  - 📎 判断"是否真的上屏"最可靠的单一指标：`WindowFromPoint(窗口中心)` 的根窗口**是不是它自己**。`IsWindowVisible` 与 `PrintWindow` 都会骗人。
+
 - v1.2 待办：O1 托盘 HICON 释放 / O3 全天勿扰 / O4 配置热加载 / O5 记录项；设置界面、开机自启、提示音。（**O2 多屏夹紧已并入 v1.1 的 B1 修复**）
 
 ## 关键实现事实（供后续参考）
