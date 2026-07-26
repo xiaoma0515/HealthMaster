@@ -122,6 +122,11 @@
 - 📎 **验证手法**：判断"是否真出声"别靠人耳，用 Core Audio `IAudioMeterInformation` 峰值表客观测量。
 - 🔥 **测声音的头号坑（已害我误判成「从没出过声」）**：**winmm 的 `PlaySound` 不挂在调用进程自己的音频会话上**（它走系统 "System Sounds" 会话），所以用 `IAudioSessionControl2.GetProcessId` 按 PID 找会话再测峰值，**永远返回"该进程无音频会话"**。必须改测**默认端点**（对 `IMMDevice` 直接 `Activate(IAudioMeterInformation)`）。代价是会把别的程序的声音一起算进来，靠时间戳对齐区分。
   - 实测参考值（端点口径，采样 120–150ms）：提醒音 0.28–0.49 / 持续约 2.5s；完成音约 0.037 / 持续约 0.2s；静默基线 0。设计峰值 0.89 / 0.11 因采样间隔会测不满，属正常。
+- 🕶️ **「悬浮窗又不见了」的第二种成因：对比度，不是故障**（2026-07-26 17:20，用户第二次报告"消失"）
+  - 三项指标全部正常（`WindowFromPoint(中心)` 命中自己、`DWMWA_CLOAKED=0`、`CAPTUREBLT` 拍到完整药丸），真因是**恒深色 HUD 药丸压在用户那个近黑色数据表格上，轮廓完全消失**。v2 设计稿隐含假设背景是浅色/中性。
+  - 已修（commit `5543099`，只改 `Themes\Dark.xaml` 三组 token，版式与「恒深色」方向未动）：`Brush.Card.StrokeInner` 由恒定 12% 白改为**垂直渐变 45%→30%→25%**（12% 白 1px 在近黑底上合成约 `#1F1F1F` 与背景同色故隐形；最暗 25% 保侧边底边可见，上缘 45% 是暗材质 rim light，避免均匀白框的廉价感）；`Brush.Shadow.1/2/3` 15/10/6%→**24/16/9%**（浅底一侧的定界担当）；`Brush.Card.Bg/BgHover` 底色提亮 + α 85%→**92%**（减半背景正文残影）。仍零 `Effect`。
+  - 📎 **排查顺序**：先跑那三项指标。全过 = 窗口没毛病，去看背景对比度；有一项不过才是真没上屏（见上面的沙箱启动坑）。
+  - 📎 `ui-designer` 记录的环境坑：本机 **`SetWindowPos` 设 `HWND_TOPMOST` 会被静默拒绝**（返回 True 但 `WS_EX_TOPMOST` 不生效），WinForms `TopMost=true` 也不生效，**造"纯色背景垫窗"这条路走不通**。改用现成屏幕内容当深/浅底（终端 `#0C0C0C` / 计算器白面板），并把待测实例的 `FloatingX/Y` 直接落到目标区域上——省事得多。
 - 🔊 **「用户说没听到声音」先查默认播放设备**：2026-07-26 用户报告没声音，实测提醒音与完成音其实**全部正常送达默认端点**，只是该机默认设备是 `Headphones (Muvit Pure)` 而非内置喇叭 `Reproduktory (Realtek(R) Audio)`，声音进了没在听的那一路。**别急着改代码**——先枚举端点、看默认是哪个、看端点音量与静音。切换默认音频设备会影响用户所有程序，属用户决定，不要擅自改。
 - 🔧 **测试隔离的坑（已踩过一次，四组 CPU 数据全糊、结论完全错）**：**给子进程设 `APPDATA` 环境变量对本项目无效**——`Environment.GetFolderPath(SpecialFolder.ApplicationData)` 走 `SHGetFolderPath` 读已知文件夹，**不看环境变量**，于是测试进程照样读到用户真实 config。正确做法：在**临时副本源码**里给 `ConfigStore` 加 `HM_TEST_APPDATA` 环境变量开关（生产代码不含此钩子），并另换单实例互斥名。
 - **成品 exe（自包含单文件，约 139MB，双击即用）**：`publish\selfcontained\HealthMaster.exe`（同目录 .pdb 可删）。覆盖前先备份，且需用户先退出正在运行的旧版进程（否则文件被占用）。
