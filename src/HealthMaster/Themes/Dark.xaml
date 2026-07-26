@@ -14,17 +14,39 @@
          真毛玻璃（DWMWA_SYSTEMBACKDROP_TYPE）要求窗口不是分层窗口，而悬浮窗必须开
          AllowsTransparency 才能有自定义圆角与卡片外的透明留白，二者互斥。
          此处用「半透明深色 + 1px 内高光描边」做视觉近似（HUD 本身就是低模糊度暗材质）。 -->
-    <SolidColorBrush x:Key="Brush.Card.Bg"          Color="#D91C1C1E" />
-    <SolidColorBrush x:Key="Brush.Card.BgHover"     Color="#E62A2A2C" />
-    <SolidColorBrush x:Key="Brush.Card.StrokeInner" Color="#1FFFFFFF" />
+    <!-- 底色比初版（#D91C1C1E / α85%）略提亮并略加不透明度：
+         用户实测把窗口压在「近黑色数据表格应用」上时，#1C1C1E 与背景同明度，卡片整块隐形。
+         #242426 仍是 HUD 暗材质区间（macOS 深色 HUD 约 #2C2C2E），不改「恒深色」方向。
+         不透明度 85% → 92%：初版在「白字近黑底」的应用上会把背景正文透出来，
+         与倒计时互相干扰，也是「看不清」的一部分。92% 仍是半透材质。 -->
+    <SolidColorBrush x:Key="Brush.Card.Bg"          Color="#EB242426" />
+    <SolidColorBrush x:Key="Brush.Card.BgHover"     Color="#F2303034" />
+
+    <!-- ==== 卡片 1px 内描边（深底可见性的主要担当）====
+         初版是恒定 12% 白（#1FFFFFFF）：压在近黑背景上，1px×12% 白 ≈ #1F1F1F，与背景几乎同色，
+         轮廓消失 → 用户两次以为悬浮窗不见了。
+
+         这里改为**垂直渐变描边**（BorderBrush 接受任意 Brush，成本仍是几何填充）：
+           上缘 45% → 25% 收尾。上缘亮是 Apple 暗材质的「rim light」手法，
+           而 25% 的下限保证左右两侧与底边在近黑背景上也有 ≈#404040 的可见细线。
+         仍是 1px 发丝线，不是白框；压在浅色背景上白描边自然隐没，那一侧由下方三层伪阴影负责。 -->
+    <LinearGradientBrush x:Key="Brush.Card.StrokeInner" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0"    Color="#73FFFFFF" />
+        <GradientStop Offset="0.28" Color="#4DFFFFFF" />
+        <GradientStop Offset="1"    Color="#40FFFFFF" />
+    </LinearGradientBrush>
 
     <!-- ==== 三层伪阴影 ====
          悬浮窗每秒重绘一次（倒计时 1Hz），且是分层窗口走软件渲染路径 —— DropShadowEffect
          会变成每秒一次 CPU 模糊卷积的**常驻**开销，与「轻量低占用」红线冲突，故禁用一切 Effect。
-         替代：三个同心 Border 递减 alpha，纯几何填充，零着色器成本。 -->
-    <SolidColorBrush x:Key="Brush.Shadow.1" Color="#26000000" />
-    <SolidColorBrush x:Key="Brush.Shadow.2" Color="#1A000000" />
-    <SolidColorBrush x:Key="Brush.Shadow.3" Color="#0F000000" />
+         替代：三个同心 Border 递减 alpha，纯几何填充，零着色器成本。
+
+         alpha 自初版（15/10/6%）小幅上调到 24/16/9%：三层叠加后由外到内的实际黑度
+         约 9% → 23% → 42%，在浅色背景上把卡片边界收得更实（这是浅底一侧的定界担当）；
+         在深色背景上黑影本就不可见，故无副作用。刻意只「稍强」，避免在白底上出现脏边。 -->
+    <SolidColorBrush x:Key="Brush.Shadow.1" Color="#3D000000" />
+    <SolidColorBrush x:Key="Brush.Shadow.2" Color="#29000000" />
+    <SolidColorBrush x:Key="Brush.Shadow.3" Color="#17000000" />
 
     <!-- ==== 文本三级色阶（层次靠字重 + 色阶，不靠字号堆叠）==== -->
     <SolidColorBrush x:Key="Brush.Text.Primary"   Color="#F2FFFFFF" />
