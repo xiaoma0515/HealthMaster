@@ -11,7 +11,7 @@ namespace HealthMaster.Services;
 
 /// <summary>
 /// 系统托盘图标与菜单（.NET 内置 WinForms NotifyIcon，零第三方依赖）。
-/// 菜单：暂停 / 恢复全部、打开配置文件夹、退出。
+/// 菜单：暂停 / 恢复全部、提醒声音开关、打开配置文件夹、退出。
 /// 注意：不提供"隐藏悬浮窗"——提醒图标挂在悬浮窗旁，是取消弹窗后唯一的提醒通道，
 /// 隐藏悬浮窗会让用户彻底且无感知地收不到提醒。
 /// 图标在运行时绘制，无需二进制资源文件。
@@ -21,21 +21,36 @@ public sealed class TrayIconService : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private readonly IReminderScheduler _scheduler;
     private readonly ToolStripMenuItem _pauseItem;
+    private readonly ToolStripMenuItem _soundItem;
     private readonly Action _exit;
+    private readonly Action<bool> _onSoundEnabledChanged;
     private readonly string _configDir;
 
-    public TrayIconService(IReminderScheduler scheduler, Action exit, string configDir)
+    private bool _soundEnabled;
+
+    /// <param name="soundEnabled">提示音当前开关状态（来自配置）。</param>
+    /// <param name="onSoundEnabledChanged">用户切换提示音时回调，由上层负责生效与持久化。</param>
+    public TrayIconService(
+        IReminderScheduler scheduler,
+        Action exit,
+        string configDir,
+        bool soundEnabled,
+        Action<bool> onSoundEnabledChanged)
     {
         _scheduler = scheduler;
         _exit = exit;
         _configDir = configDir;
+        _soundEnabled = soundEnabled;
+        _onSoundEnabledChanged = onSoundEnabledChanged;
 
         var menu = new ContextMenuStrip();
         _pauseItem = new ToolStripMenuItem(Strings.TrayPauseAll, null, OnPauseToggle);
+        _soundItem = new ToolStripMenuItem(SoundText(), null, OnSoundToggle);
         var openConfigItem = new ToolStripMenuItem(Strings.TrayOpenConfig, null, (_, _) => OpenConfigFolder());
         var exitItem = new ToolStripMenuItem(Strings.TrayExit, null, (_, _) => _exit());
 
         menu.Items.Add(_pauseItem);
+        menu.Items.Add(_soundItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(openConfigItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -65,6 +80,17 @@ public sealed class TrayIconService : IDisposable
             _scheduler.PauseAll();
             _pauseItem.Text = Strings.TrayResumeAll;
         }
+    }
+
+    /// <summary>动作式文案：显示"点下去会发生什么"，与「暂停全部 / 恢复全部」一致。</summary>
+    private string SoundText() => _soundEnabled ? Strings.TraySoundTurnOff : Strings.TraySoundTurnOn;
+
+    /// <summary>切换提示音：即时生效 + 持久化都交给回调，本类只负责菜单文字。</summary>
+    private void OnSoundToggle(object? sender, EventArgs e)
+    {
+        _soundEnabled = !_soundEnabled;
+        _soundItem.Text = SoundText();
+        _onSoundEnabledChanged(_soundEnabled);
     }
 
     private void OpenConfigFolder()

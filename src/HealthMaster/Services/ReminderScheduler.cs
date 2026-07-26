@@ -23,6 +23,7 @@ public sealed class ReminderScheduler : IReminderScheduler
 
     public event Action<DateTime>? Tick;
     public event Action<ReminderType>? ReminderDue;
+    public event Action? RemindersDueBatch;
     public event Action? RemindersReset;
 
     public ReminderScheduler(IConfigProvider config, DndEvaluator dnd)
@@ -77,6 +78,10 @@ public sealed class ReminderScheduler : IReminderScheduler
                 RemindersReset?.Invoke();
             }
 
+            // 本次评估是否有新图标冒出：多类同时到点也只算一批，批次末尾统一发一次
+            // RemindersDueBatch（提醒音只响一声，见 IReminderScheduler 的说明）。
+            bool anyDue = false;
+
             foreach (var st in _states.Values)
             {
                 if (st.IsHeld) continue;              // 图标已挂出、等待用户单击期间不重复触发
@@ -86,7 +91,10 @@ public sealed class ReminderScheduler : IReminderScheduler
                     if (inDnd)
                         st.MissedDuringDnd = true;    // 勿扰内抑制，不冒图标，稍后补偿一次
                     else
+                    {
                         ReminderDue?.Invoke(st.Type); // 正常到点，冒出图标
+                        anyDue = true;
+                    }
                 }
             }
 
@@ -99,9 +107,12 @@ public sealed class ReminderScheduler : IReminderScheduler
                     {
                         st.MissedDuringDnd = false;
                         ReminderDue?.Invoke(st.Type);
+                        anyDue = true;                // 补偿也是正常提醒，该出声
                     }
                 }
             }
+
+            if (anyDue) RemindersDueBatch?.Invoke();
         }
 
         Tick?.Invoke(nowUtc);

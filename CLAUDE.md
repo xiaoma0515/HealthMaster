@@ -32,7 +32,8 @@
 - **夜间勿扰时段**：期间不冒新图标；**进入勿扰时自动清空已挂出的残留图标**；勿扰结束后只补偿一次。
 - **托盘无「隐藏悬浮窗」选项**（图标是唯一提醒通道，隐藏会导致彻底收不到提醒且无感知）。
 - 单一 1Hz 时钟驱动，用绝对墙钟时间判定到点，处理休眠/唤醒。
-- 已确认默认策略：暂不开机自启、暂不加提示音（后续可加）。
+- 已确认默认策略：暂不开机自启。
+- **提示音（v2.1 新增）**：提醒冒图标时播禅意颂钵音，点击完成播一声很轻的滴水音；**默认开启**，托盘可切换、配置可关；多类同时到点**只播一次**；勿扰期间与清残留图标**绝不出声**。纯代码合成，无外部音频文件。
 - 配置：支持「勿扰时段」与悬浮窗位置的本地持久化（本地 JSON，不上传）；间隔等其余项预留可配置接缝，界面可后续做。
 
 ## 专家团队（项目级 subagents）
@@ -66,7 +67,7 @@
   - PM 判定：`TrayIconService.cs` 被 ui-designer 动过（using + 一行 `TrayMenuTheme.Apply` + 托盘图标绘制），属纯外观、不涉逻辑，**不算越界**。
   - ✅ **v2 已上线**（2026-07-26 11:10）：旧进程 PID 57396 已终止，新 exe（139.4MB，11:09:50）已覆盖 `publish\selfcontained\HealthMaster.exe` 并启动（PID 57596）。位置记忆核对无误（config `1309.6/832` = 实际显示位置）。用户 `config.json` 全程 SHA256 未变。
     - 旧 emoji 版备份**保留**：`publish\selfcontained\HealthMaster.v1.1-emoji.exe.bak`（139.4MB）。已删构建垃圾：`selfcontained\HealthMaster.pdb`、`selfcontained_new\` 整个目录。
-    - ⚠️ v2 改动**尚未 git commit**，工作区有 11 个 M + 5 个未跟踪（`Themes\`、`Resources\IconGeometries.cs` 等），待用户定夺。
+    - ✅ v2 全部改动已 commit + push：`f42e11f`（22 文件，+1793/-189），已推到 `origin/main`。用户验收「看着没有问题」。
   - ⚠️ **仍待用户真鼠标复验**：hover 展开、单击消失、pressed 态、tooltip、托盘右键菜单渲染——本机合成鼠标输入到不了该应用（拿 v1.1 原版对照过，是环境限制非回归）；且只在 125% DPI 目视过，150%/200% 未实机验证。
   - 🔧 **验证手法（重要，省后人时间）**：本机 `SendInput` 合成鼠标**到不了**本应用（多个 agent 卡在这里，误以为无法验证交互），但 **`SetCursorPos` 可以**——已实证能真实驱动 hover 展开。此外 UIA `Invoke` 可覆盖图标点击逻辑（但绕过真实命中测试），`VisualTreeHelper.HitTest` 可验命中链路。
   - 📎 **强杀进程不丢位置记忆**：位置在拖动完成时即落盘，不依赖退出保存。另：WPF 无边框工具窗收不到 `CloseMainWindow()` 的 WM_CLOSE 生效路径，脚本化终止需 `Stop-Process -Force`。
@@ -79,14 +80,34 @@
     - 实测：四缘 + 极限位共 9 例、双屏 4 例全过；3 个位置各 15 轮 hover 进出最大偏移 **0.0000 DIP**；拖动跟手误差 ≤0.8 DIP。
     - 📎 记录一个**既有**（非本次引入）现象：混合 DPI 下 WPF 的 `Left/Top` 用主屏标度、`ActualWidth` 用本屏标度，`WorkAreaHelper` 在副屏会把窗口尺寸高估约 25%，即**夹得更保守**（可能留空隙，绝不会越界），故未动。
   - 📋 **v2.1 待办**（reviewer 提出，本轮未做）：**S5** 伪阴影 3px 偏移（用户已定保持，仅记录）；**O-a** `S.Badge` 默认色是绿色，`Type` 绑定失效会静默全绿而非报错；**O-b** `ToolTip` 是无 key 的应用级隐式样式且用 `TemplateBinding`，塞非 string 会空白；**O-c** `Dark.xaml` 全部 Brush 未 `Freeze`；**O-d** `TrayMenuTheme` 的 4/12 是设备像素常量，高 DPI 下偏窄；**O-f** 文案精简为「距下次」（设计稿建议，未落地）。
+- 🚧 **v2.1 提示音进行中**（2026-07-26）：上一会话已产出 `ZenTone` 合成原型（scratchpad，三候选 颂钵/磬/滴水 + zen-1 三档响度增强 a/b/c），用户试听后选定 **c**。
+  - ✅ 用户已定的三项需求：① 默认开启；② 多类同时到点只响一次；③ 点击完成播一声很轻的反馈音（用滴水，峰值 0.11 vs 提醒音 0.89，约 1/4 感知响度）。
+  - ✅ developer 完成：新增 `Resources\ZenTones.cs` / `Services\SoundService.cs`，改 `IReminderScheduler`+`ReminderScheduler`（新增 `RemindersDueBatch`）/`AppConfig`(`SoundEnabled`)/`ConfigStore`(`SaveSoundEnabled` 定向保存)/`TrayIconService`/`Strings`/`App.xaml.cs`/`docs`+`README`。0 警告 0 错误；SHA256 与原型一致；逻辑层 + 端到端 GUI 冒烟全过（含 S1/S2 未回归、`Views\*.xaml` 与 S4 锚点模型未被碰）。
+  - ✅ reviewer 审查：**放行、无阻断项**。独立复核用了比 developer 更强的口径（`dotnet build -c Release` 出真实 dll + `Assembly.LoadFrom` 反射调用，验的是构建产物而非源文件），SHA256 仍逐字节一致；反射驱动私有 `Evaluate` 跑 10 个场景（含休眠 3h 唤醒、勿扰前入睡/勿扰后醒、暂停/恢复）零误发声零漏发声；1500 次播放句柄稳定无泄漏；UI 首帧与 1Hz 抖动 A/B 对照无回归。提出 A1/A2 + S1–S4。
+  - ✅ developer 收尾（用户已确认三项取舍：文案改动作式、winmm 截断可接受、音量不可调可接受）：修 **A1**（惰性预热，关声音 CPU 6.17s→**0.90s**，≈对照组 0.87s）、**S2**（关声音打断当前播放，Core Audio 实测关后回落基线）、**S1**（冷路径只挂一个续体、只留最后一次请求）、**S3**（托盘动作式文案）、**A2/S4**（文档口径统一 + 补首次播放固有开销）。0 警告 0 错误，SHA256 未变，8 线程并发切换实测预热恒只跑一次。
+  - **未 commit、未 publish、未动用户运行中的实例（PID 54316）与 `config.json`（SHA256 全程 `f1b11fe7…0082` 未变）**。
 - v1.2 待办：O1 托盘 HICON 释放 / O3 全天勿扰 / O4 配置热加载 / O5 记录项；设置界面、开机自启、提示音。（**O2 多屏夹紧已并入 v1.1 的 B1 修复**）
 
 ## 关键实现事实（供后续参考）
 
 - SDK 为**用户级安装**（`C:\Users\xiao\.dotnet`，dotnet 8.0.423），非管理员权限；用前需把 `%USERPROFILE%\.dotnet` 加入 PATH。
 - 源码：`src\HealthMaster\`；启动 `dotnet run --project src\HealthMaster\HealthMaster.csproj`；打包见 `README.md`（自包含单文件约 140MB / 依赖框架版极小）。
-- 配置：`%APPDATA%\HealthMaster\config.json`（勿扰时段、悬浮窗位置、间隔覆盖）。**勿扰默认关闭**，需手改 `Enabled:true`。
-- 未做：设置界面、开机自启、提示音。
+- 配置：`%APPDATA%\HealthMaster\config.json`（勿扰时段、悬浮窗位置、间隔覆盖、`SoundEnabled`）。**勿扰默认关闭**，需手改 `Enabled:true`；**提示音默认开启**。
+- 未做：设置界面、开机自启。
+
+### 提示音（v2.1）关键事实
+
+- 声音**纯代码合成**，仓库与产物里**没有任何音频文件**，依赖仍为零。`Resources\ZenTones.cs` = 非谐波泛音物理模型 + 拍频 + 相位优化（最小化波峰因数）+ 解析包络上行压缩 + tanh 软限幅。
+- ⚠️ **`ZenTones.cs` 里的固定随机种子（`915231` / 48 次相位试验 / `20260726`）与全部配方常量不可改动**——改任何一个声音就变了。用户是**逐个试听后选定**「强化版 c」（原型 `LoudBowl.C`）的，落地代码产出的 WAV 与原型 `zen-1-loud-c.wav` **SHA256 逐字节一致**（`26177E75…8111`，255824 字节）。日后改动此文件必须重跑该哈希比对。
+- **「只播一次」落在调度器而非 UI 时间窗**：`ReminderScheduler.Evaluate` 内汇总 `anyDue`，一拍末尾只发一次 `RemindersDueBatch`。副作用是**静音成了结构保证**——`RemindersReset`（进入勿扰清残留 / 暂停 / 恢复）根本不走这条路径，勿扰内到点只打标记不发事件，无需任何额外判断就必然无声。**不要把播音改回按图标增减触发**，那会同时打破「只响一次」与勿扰静音两条。
+- 合成放**专用后台线程 + `BelowNormal` 优先级**预热，不进线程池（Release 实测约 4.4–4.5s；Debug 约 6.6s，含分层 JIT——**看到 6.6s 别当回归**）。预热末尾做**一次**（非周期）`GC.Collect(compacting)` 归还 5.4MB LOH，耗时 0.6–1.1ms。未新增任何定时器。
+- ⚠️ **预热必须惰性**：`SoundEnabled=false` 时**不得**预热。曾经 ctor 无条件起预热线程，导致关了声音仍每次启动烧 6.17s CPU + 24MB（对照组仅 0.87s），顶在红线 2 上。现为 `Interlocked.CompareExchange` 保证全生命周期至多预热一次，托盘 false→true 时才惰性触发；修复后关声音回落到 **0.90s**（≈对照组）。**改 `SoundService` 时别把这条退回去。**
+- 常驻开销两个口径别搞混：**从未播放过**时工作集 +5.2MB；**首次 `Play` 后**会拉起 Windows 音频栈，再 +约 100 句柄 / +6 线程 / 工作集 +约 11MB，此后稳定不涨——**这是播任何声音的固有成本，不是泄漏**（1500 次播放句柄稳定在 312–321）。
+- 托盘用**动作式文字**「关闭提醒声音 / 开启提醒声音」（描述"点下去会发生什么"，与紧邻的「暂停全部」方向一致），而非勾选框——`TrayMenuTheme` 刻意关掉了 `ShowImageMargin`/`ShowCheckMargin`，勾选标记无处可画。**用户已确认**；要真勾选框须先派 ui-designer 调边距槽。
+- 托盘关声音会 `Stop()` **打断正在响的那一声**（用户被吵到去关，最想要的就是立刻停）。
+- 📎 **已知限制（用户已确认「问题不大」，勿当 bug 修）**：① winmm 进程内只有一个播放槽，提醒音（2.9s）未播完时点图标会被完成音截断；② 音量不可调，只有开/关，接缝在 `ZenTones` 的 `TargetPeak` 常量。
+- 📎 **验证手法**：判断"是否真出声"别靠人耳，用 Core Audio `IAudioMeterInformation` 峰值表客观测量——静默基线约 0.001，两条音轨设计峰值 0.89 / 0.11 会在测量里精确复现。
+- 🔧 **测试隔离的坑（已踩过一次，四组 CPU 数据全糊、结论完全错）**：**给子进程设 `APPDATA` 环境变量对本项目无效**——`Environment.GetFolderPath(SpecialFolder.ApplicationData)` 走 `SHGetFolderPath` 读已知文件夹，**不看环境变量**，于是测试进程照样读到用户真实 config。正确做法：在**临时副本源码**里给 `ConfigStore` 加 `HM_TEST_APPDATA` 环境变量开关（生产代码不含此钩子），并另换单实例互斥名。
 - **成品 exe（自包含单文件，约 139MB，双击即用）**：`publish\selfcontained\HealthMaster.exe`（同目录 .pdb 可删）。覆盖前先备份，且需用户先退出正在运行的旧版进程（否则文件被占用）。
 - 提醒图标为**独立的无边框透明 Topmost 窗**（`ReminderBadgeWindow`），AttachTo 悬浮窗跟随其位置/显隐，刻意不塞进悬浮窗内部，以免动到悬浮窗的尺寸与 Left/Top 语义（位置记忆逻辑依赖它）。
 - WPF 不渲染彩色 emoji。~~v1.1 图标字形为单色白 emoji 字~~ → **v2 起改为自绘矢量 `Path`**（`Resources\IconGeometries.cs`，24×24 视框的 Path Mini-Language 常量，纯填充造型；护眼用 `F0`/EvenOdd 挖空瞳孔）。仍无任何外部图片/字体文件，靠彩色圆底区分四类。`ReminderBadgeItem.Glyph`(string) 已删除，改为 `Icon`(已 Freeze 的 `Geometry`)。

@@ -26,6 +26,13 @@ public static class Strings
     // —— 托盘菜单 ——
     public const string TrayPauseAll = "暂停全部";
     public const string TrayResumeAll = "恢复全部";
+    // 提示音开关用「文字」而非 WinForms 的勾选框：托盘菜单主题（TrayMenuTheme）
+    // 关掉了左侧图标 / 勾选边距槽，勾选标记无处可画。
+    // 文案取**动作式**（描述"点下去会发生什么"），与紧邻的「暂停全部 / 恢复全部」语义方向一致：
+    // 声音开着时显示「关闭提醒声音」，关着时显示「开启提醒声音」。
+    public const string TraySoundTurnOff = "关闭提醒声音";
+    public const string TraySoundTurnOn = "开启提醒声音";
+
     public const string TrayOpenConfig = "打开配置文件夹";
     public const string TrayExit = "退出";
 }

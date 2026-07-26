@@ -81,6 +81,17 @@ public sealed class ConfigStore
         Save(latest);
     }
 
+    /// <summary>
+    /// 只保存提示音开关：同 <see cref="SaveFloatingPosition"/> 的定向保存约定——
+    /// 先读磁盘最新配置，仅覆盖该字段再写回，绝不用内存快照整份覆盖用户手改的其他项。
+    /// </summary>
+    public void SaveSoundEnabled(bool enabled)
+    {
+        var latest = Load();
+        latest.SoundEnabled = enabled;
+        Save(latest);
+    }
+
     public void Save(AppConfig config)
     {
         try

@@ -21,6 +21,7 @@ public partial class App : Application
     private ReminderScheduler _scheduler = null!;
     private PowerEventMonitor _powerMonitor = null!;
     private TrayIconService _tray = null!;
+    private SoundService _sound = null!;
     private FloatingWindow _floating = null!;
     private FloatingViewModel _floatingVm = null!;
     private ReminderBadgesViewModel _badgesVm = null!;
@@ -50,6 +51,9 @@ public partial class App : Application
         var dnd = new DndEvaluator(_config.DoNotDisturb);
         _scheduler = new ReminderScheduler(configProvider, dnd);
 
+        // 提示音：构造即在后台线程预热合成（不卡 UI），默认开启，可从托盘关闭
+        _sound = new SoundService(_config.SoundEnabled);
+
         _floatingVm = new FloatingViewModel(_scheduler);
         _floating = new FloatingWindow { DataContext = _floatingVm };
         PlaceFloatingWindow(_floating);
@@ -67,10 +71,15 @@ public partial class App : Application
             if (_floating.IsVisible) _floatingVm.Update(now);
         };
         _scheduler.ReminderDue += type => _badgesVm.Show(type);
+        // 提醒音按「调度批次」发一次：四类同时到点也只响一声，不叠加四段 2.9s 长音。
+        // 勿扰期间被抑制的到点、以及进入勿扰时的清空残留图标都不会走到这里 → 天然静音。
+        _scheduler.RemindersDueBatch += () => _sound.PlayReminder();
         _scheduler.RemindersReset += () => _badgesVm.Clear();
 
         _powerMonitor = new PowerEventMonitor(_scheduler, Dispatcher);
-        _tray = new TrayIconService(_scheduler, ExitApp, _configStore.ConfigDirectory);
+        _tray = new TrayIconService(
+            _scheduler, ExitApp, _configStore.ConfigDirectory,
+            _config.SoundEnabled, OnSoundEnabledChanged);
 
         _floating.Show();
         _badges.AttachTo(_floating);   // 图标窗跟随悬浮窗移动 / 显隐
@@ -83,6 +92,15 @@ public partial class App : Application
     {
         _scheduler.Acknowledge(type);
         _badgesVm.Remove(type);
+        _sound.PlayAcknowledge();   // 很轻的确认音，不是第二次提醒
+    }
+
+    /// <summary>托盘切换提示音：即时生效 + 定向持久化（不覆盖用户手改的其他配置项）。</summary>
+    private void OnSoundEnabledChanged(bool enabled)
+    {
+        _sound.Enabled = enabled;
+        _config.SoundEnabled = enabled;
+        _configStore.SaveSoundEnabled(enabled);
     }
 
     private void PlaceFloatingWindow(FloatingWindow w)
@@ -138,6 +156,7 @@ public partial class App : Application
             _badges?.Detach();
             _powerMonitor?.Dispose();
             _tray?.Dispose();
+            _sound?.Dispose();
             SaveFloatingPositionSafe();
         }
         finally

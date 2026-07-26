@@ -22,6 +22,12 @@ public sealed class AppConfig
 
     /// <summary>夜间勿扰时段。</summary>
     public DndConfig DoNotDisturb { get; set; } = new();
+
+    /// <summary>
+    /// 提醒提示音总开关（v2.1，**默认开启**）。托盘菜单可即时切换并持久化。
+    /// 老配置文件里没有这个键时，反序列化不会赋值，属性保持这里的初始值 true——即「默认开启」。
+    /// </summary>
+    public bool SoundEnabled { get; set; } = true;
 }
 
 /// <summary>夜间勿扰时段配置。</summary>

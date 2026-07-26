@@ -31,7 +31,8 @@
 6. **非打断式（v1.1 新增）**：不得使用弹窗、任务栏闪烁、`Activate()` 抢前台等任何打断用户当前工作的
    强提醒手段。**图标的出现与被点击都不得夺取焦点**（实现见 §8 的 `WS_EX_NOACTIVATE`）。
 
-现行策略：**暂不开机自启、暂不加提示音**（结构上预留，见 §11）。
+现行策略：**暂不开机自启**。**提示音已于 v2.1 加入**（默认开启，可从托盘关闭，见 §8.9）——
+它不违反红线 6：声音不创建窗口、不抢焦点、不打断输入，且用户可一键关掉。
 
 ---
 
@@ -125,9 +126,11 @@ flowchart TB
 - **单一时钟源**：整个 App 只有一个 `DispatcherTimer`（1 Hz），驱动倒计时刷新与到点检查，避免多定时器抖动与忙轮询。
   提醒图标本身**不带任何动画循环或额外定时器**（悬停放大是纯 Trigger）。
 - **绝对墙钟判定**：每个提醒记录 `NextDueUtc`（绝对时间），到点判断是 `now >= NextDueUtc`，**不靠累计 tick 计数**——这是正确处理系统休眠/唤醒的核心。
-- **事件驱动 UI**：Scheduler 发三个事件——`Tick`（给悬浮窗刷新剩余秒数）、`ReminderDue`（冒出图标）、
-  `RemindersReset`（清空全部图标），UI 层被动响应。
+- **事件驱动 UI**：Scheduler 发四个事件——`Tick`（给悬浮窗刷新剩余秒数）、`ReminderDue`（冒出图标）、
+  `RemindersDueBatch`（本批有新图标冒出，播一声提醒音，v2.1）、`RemindersReset`（清空全部图标），
+  UI 层被动响应。
 - **非打断**：所有提醒表达都在悬浮窗周边完成，进程**永不主动激活任何窗口**。
+  提示音（v2.1）同样不创建窗口、不抢焦点，且可从托盘一键关闭。
 
 ---
 
@@ -143,6 +146,7 @@ flowchart TB
 | 调度 | 四路独立计时、到点判定、勿扰抑制与补偿、暂停/重置、休眠唤醒 | `IReminderScheduler`、`ReminderScheduler` |
 | 电源/会话监听 | 唤醒/解锁后立即重算 | `PowerEventMonitor` |
 | 多屏工作区 | 取窗口所在屏幕的工作区（DIP），供悬浮窗与图标窗共用夹紧 | `WorkAreaHelper` |
+| 提示音 | 到点音 / 完成音的代码合成、缓存与播放（无音频文件） | `SoundService`、`ZenTones` |
 | 悬浮窗 | always-on-top、拖动、悬停展开显示四路倒计时、位置跨重启记忆 | `FloatingWindow` + `FloatingViewModel` |
 | **到点提醒图标** | 悬浮窗旁竖排冒出、不抢焦点、单击即完成 | `ReminderBadgeWindow` + `ReminderBadgesViewModel` + `ReminderBadgeItem` |
 | 托盘 | 暂停/恢复全部、打开配置文件夹、退出 | `TrayIconService` |
@@ -179,6 +183,7 @@ HealthMaster/
 │     │  ├─ ReminderScheduler.cs       # 核心调度
 │     │  ├─ PowerEventMonitor.cs       # 电源/会话事件
 │     │  ├─ WorkAreaHelper.cs          # 多屏工作区（Screen + DPI → DIP）
+│     │  ├─ SoundService.cs            # 提示音播放（后台预热合成 + 缓存，v2.1，见 §8.9）
 │     │  └─ TrayIconService.cs         # 托盘（图标运行时绘制，无 .ico 资源文件）
 │     ├─ ViewModels/
 │     │  ├─ FloatingViewModel.cs       # 倒计时可绑定数据（INotifyPropertyChanged）
@@ -188,14 +193,19 @@ HealthMaster/
 │     │  ├─ FloatingWindow.xaml/.cs
 │     │  └─ ReminderBadgeWindow.xaml/.cs
 │     └─ Resources/
-│        └─ Strings.cs                 # 集中中文文案
+│        ├─ Strings.cs                 # 集中中文文案
+│        ├─ IconGeometries.cs          # 四类图标的矢量路径（无外部图片文件）
+│        ├─ ThemeKeys.cs               # 主题资源键
+│        └─ ZenTones.cs                # 提示音合成器（无外部音频文件，v2.1，见 §8.9）
 ```
 
 > **已删除（v1.1，不得恢复）**：`Views/ReminderPopupWindow.xaml/.cs`、`Services/PopupQueue.cs`、
 > `NativeMethods.cs`（`FlashWindowEx` 任务栏闪烁）。
 >
 > **无二进制资源**：托盘图标在 `TrayIconService.CreateIcon()` 中用 `System.Drawing` 运行时绘制；
-> 四类提醒图标用系统字体 emoji 字形 + 彩色圆底，**不引入任何外部图片文件**（`Resources/Icons/` 目录不存在）。
+> 四类提醒图标为 `IconGeometries` 的自绘矢量路径 + 彩色圆底（v2 起，见 §8.7）；
+> 提示音由 `ZenTones` 在内存里合成 PCM（v2.1，见 §8.9）。
+> **不引入任何外部图片 / 字体 / 音频文件**（`Resources/Icons/`、`Resources/Sounds/` 目录均不存在）。
 
 > DI 说明：项目很小，**不引入 IoC 容器**；在 `App.OnStartup` 里手工 new 并串联各服务（DI-lite），保持依赖清晰即可。
 
@@ -581,12 +591,77 @@ v2 把展开态加宽后量级从 v1.1 的约 20 DIP 涨到 59 DIP，用户实�
 
 ```
 Scheduler.ReminderDue(type)      → BadgesViewModel.Show(type)   → 按固定顺序插入 → 图标出现
-Scheduler.RemindersReset()       → BadgesViewModel.Clear()      → 全部图标消失
+Scheduler.RemindersDueBatch()    → SoundService.PlayReminder()  → 提醒音（每批只一声，见 §8.9）
+Scheduler.RemindersReset()       → BadgesViewModel.Clear()      → 全部图标消失（静默）
 BadgeWindow.BadgeClicked(type)   → App.OnBadgeCompleted         → Scheduler.Acknowledge(type)
                                                                  + BadgesViewModel.Remove(type)
+                                                                 + SoundService.PlayAcknowledge()
 ```
 
 `Show(type)` 对已存在的类**直接忽略**（幂等），防止勿扰补偿等路径造成重复图标。
+
+### 8.9 提示音（v2.1）
+
+**目标**：给图标提醒补一个听觉通道，但绝不越过红线 6——声音不创建窗口、不抢焦点、不打断输入，
+且用户可一键关掉。默认**开启**（`AppConfig.SoundEnabled`，缺该键时按 true 读出）。
+
+| 场景 | 声音 | 说明 |
+|------|------|------|
+| 到点冒出图标 | 颂钵，约 2.9s | 同一调度批次**只响一声** |
+| 单击图标完成 | 檐下滴水，1.1s（实际可闻约 0.4s，尾部是衰减到听阈以下的余韵） | 峰值仅提醒音的 1/8，RMS 低 20.6 dB，形态也完全不同，不会被听成第二次提醒 |
+| 勿扰期间到点 / 进入勿扰清残留图标 / 暂停恢复清图标 | 无 | 见下「静音是结构保证」 |
+| 勿扰结束的一次性补偿 | 有（那是正常提醒） | |
+
+**零外部文件**：`Resources\ZenTones.cs` 用非谐波泛音物理模型在内存里合成 PCM，自己封 44 字节
+WAV 头，喂给 `System.Media.SoundPlayer`（.NET 内置，底层 winmm `PlaySound`）。
+仓库与 publish 目录里**没有任何音频资源文件**，也没有新增 NuGet 包。
+
+> ⚠️ `ZenTones` 里的配方常量、**固定随机种子（相位试验 915231 / 噪声 20260726）与运算顺序不可改动**
+> ——那是用户逐条试听后拍板的音色，改动会直接改变听到的声音。提醒音已用 SHA256 与试听样本
+> 逐字节校验（`26177E75…8111`）。
+
+**「只响一声」是调度器层面的保证，不是 UI 侧的时间窗猜测**：`ReminderScheduler.Evaluate` 里用局部
+`anyDue` 汇总本拍是否有新图标冒出，批次末尾发一次 `RemindersDueBatch`。四类同时到点也只发一次，
+不会叠出四段 2.9s 长音。批次边界就是**一次 `Evaluate`**，定义明确。
+
+**静音是结构保证**：`RemindersReset`（进入勿扰清残留 / 暂停 / 恢复）根本不经过 `RemindersDueBatch`，
+勿扰内到点也只打标记不发事件——**不靠任何额外判断**就必然无声。
+
+**性能（红线 2）**：提醒音要跑 49 次 2.9s 全长渲染，**Release 口径实测首次约 4.4–4.5s**
+（含分层 JIT 预热）；完成音约 15ms。故：
+
+> 📎 **口径说明**：本节所有耗时均为 **Release** 构建实测。**Debug 下同一份合成约 6.6s**
+> （多出来的是未优化 IL + 分层 JIT），跑 `dotnet run` 调试时看到 6 秒多属正常，不是回归。
+
+- 两条音轨**只合成一次**，WAV 字节缓存在各自的 `SoundPlayer` 内部，之后每次播放只是一次
+  `PlaySound(SND_MEMORY|SND_ASYNC)`，实测调用开销 0.14–0.63 ms。
+- 合成跑在**一条专用后台线程**（`IsBackground` + `BelowNormal` 优先级），**不进线程池**
+  （数秒的纯 CPU 活会占死一个池线程），降优先级保证只吃空闲算力。
+- **预热是惰性的**：只有提示音开启时才起这条线程。关掉声音启动的进程完全不合成
+  （实测 14s 窗口内进程总 CPU 从 4.73s 降到 0.86s，与不带提示音的对照组同量级）。
+  托盘把开关从关拨到开时，用 `Interlocked.CompareExchange` 惰性触发预热且**至多一次**
+  （setter 在 UI 线程、预热在后台线程，CAS 避免竞态与重复起线程）。
+- 合成累计分配约 24.5MB，其中 512KB 的中间缓冲直接进 LOH；结束时残留约 5.4MB。
+  故在预热末尾做**一次**带 LOH 压缩的显式 `GC.Collect`（实测 1.1ms）把内存还给系统。
+  这是进程生命周期里唯一一次大批量分配，也只回收这一次，**不是周期性 GC**。
+- **不新增任何定时器**（红线 2）。
+- 实测净开销：与不带提示音的同构建对照，常驻工作集 +5.2MB、私有内存 +3.4MB、
+  **一次性 CPU +约 5.3s**（Release 口径：启动后 14s 窗口内进程总 CPU 6.2s vs 对照组 0.9s）；
+  **空闲 CPU 无差异**（两者同为 0.0–0.2%）。
+- ⚠️ 上面的 +5.2MB 是**从未播放过声音**时的数字。**首次真正 `Play`** 会拉起 Windows 音频栈
+  （winmm / 音频引擎的会话与设备句柄），实测一次性 **+约 100 句柄、+6 线程、工作集 +约 11MB**，
+  此后反复播放稳定不再涨。这不是泄漏，是"播任何声音"的固有成本——
+  看到响过铃的进程句柄数偏高，别误判成回归。
+
+**两条已知限制**：
+
+1. winmm `PlaySound` 在进程内只有一个播放槽，后一次播放会打断前一次。因此提醒音（2.9s）
+   没放完时点击图标，提醒音会被完成音截断——可接受且符合直觉（用户已经处理完了）。
+   两条音轨仍各持一个 `SoundPlayer`，避免同实例并发 `Play` 踩内部缓冲。
+2. 预热完成前（启动后约 7s 内）若有播放请求（如启动即唤醒到点），会挂在预热信号的
+   `ContinueWith` 上补播，**不丢提醒**，但会延后到预热结束。第一次提醒最快也在 20 分钟后，
+   实际几乎不会走到这条冷路径。该窗口内的多次请求**只挂一个续体、只保留最后一次**，
+   避免预热完成瞬间连播互相截断出"咔"声。
 
 ---
 
@@ -596,6 +671,12 @@ BadgeWindow.BadgeClicked(type)   → App.OnBadgeCompleted         → Scheduler.
 - **无主窗口常驻**：`ShutdownMode="OnExplicitShutdown"`；真正退出只从**托盘菜单「退出」**走。
 - **托盘菜单**（NotifyIcon + ContextMenuStrip）：
   - 暂停全部 / 恢复全部（切换 `_globalPaused`；恢复时各类 `NextDueUtc = now + Interval`，并清空图标）
+  - **关闭提醒声音 / 开启提醒声音**（v2.1，切换即时生效并定向持久化，见 §8.9）。
+    刻意用文字而非 WinForms 勾选框：`TrayMenuTheme` 关掉了左侧图标 / 勾选边距槽
+    （`ShowImageMargin` / `ShowCheckMargin = false`），勾选标记无处可画。文案取**动作式**
+    （描述"点下去会发生什么"），与「暂停全部 / 恢复全部」语义方向一致。
+    若将来要真勾选框，需 `ui-designer` 先调主题的边距槽。
+    另：关声音时会顺手 `Stop()` 正在响的那一声——用户此刻按下开关，多半正是被它吵到。
   - 打开配置文件夹（`Process.Start` 打开 `%APPDATA%\HealthMaster`，方便用户手改 JSON）
   - 退出
 - **【v1.1 决策】托盘不提供「隐藏悬浮窗」**：提醒图标挂在悬浮窗旁，取消弹窗后它是**唯一的提醒通道**；
@@ -605,14 +686,15 @@ BadgeWindow.BadgeClicked(type)   → App.OnBadgeCompleted         → Scheduler.
   （已知遗留 O1：`Bitmap.GetHicon()` 产生的非托管 HICON 未显式 `DestroyIcon`，生命周期与进程一致，
   影响可忽略，列入 v1.2 待办。）
 - **组装顺序**（`OnStartup`）：ConfigStore.Load → DefaultConfigProvider + DndEvaluator → Scheduler
+  → **SoundService**（构造即起后台线程预热合成，越早越好）
   → FloatingViewModel/FloatingWindow（定位、订阅 `PositionChanged`）→ ReminderBadgesViewModel/ReminderBadgeWindow
-  （订阅 `BadgeClicked`）→ 订阅 Scheduler 的 `Tick`/`ReminderDue`/`RemindersReset`
+  （订阅 `BadgeClicked`）→ 订阅 Scheduler 的 `Tick`/`ReminderDue`/`RemindersDueBatch`/`RemindersReset`
   → PowerEventMonitor → TrayIconService → `floating.Show()` → `badges.AttachTo(floating)` → `scheduler.Start()`。
   **`AttachTo` 必须在 `Show()` 之后**，否则首次定位拿不到锚点的实际尺寸。
 - **全局异常兜底**：`DispatcherUnhandledException`（置 `Handled = true`）/ `AppDomain.UnhandledException`
   记录到本地日志文件（`%APPDATA%\HealthMaster\logs\error-yyyyMMdd.log`，纯本地）并尽量不崩溃退出。
 - **资源释放**（`OnExit`）：`scheduler.Stop()` → `badges.Detach()` → `powerMonitor.Dispose()`（退订 SystemEvents）
-  → `tray.Dispose()` → 保存悬浮窗位置 → `mutex.Dispose()`。
+  → `tray.Dispose()` → `sound.Dispose()`（停播 + 释放两个 `SoundPlayer`）→ 保存悬浮窗位置 → `mutex.Dispose()`。
 - **【重要】退出时只定向保存悬浮窗位置**（`ConfigStore.SaveFloatingPosition`），
   **绝不整份回写内存里的 `AppConfig`**——否则会覆盖用户在程序运行期间手改的勿扰时段 / 间隔配置。
 
@@ -634,12 +716,15 @@ BadgeWindow.BadgeClicked(type)   → App.OnBadgeCompleted         → Scheduler.
 - 夜间勿扰时段（`DoNotDisturb`，**默认 `Enabled: false`**，需用户手改为 `true` 才生效）。
 - 悬浮窗位置跨重启记忆（`FloatingX/Y`）。
 - 间隔覆盖（`IntervalMinutes`，键为 `ReminderType` 名如 `"Eye"`，正整数分钟）。
+- 提示音开关（`SoundEnabled`，**默认 `true`**；老配置文件缺该键时反序列化不赋值，
+  属性保持初始值 true，即默认开启）。托盘切换走 `SaveSoundEnabled`，遵循下面的「定向保存」约定。
 - **健壮性**：
   - **原子写**：先写 `config.json.tmp`，再 `File.Replace`/`File.Move` 替换，避免写一半崩溃造成损坏。
   - **损坏回退**：反序列化失败时把坏文件改名为 `config.corrupt.json` 备份，再用默认值启动
     （备份是为了让用户还能人工修复，且不被后续写入永久覆盖）；其他读盘异常直接回退默认，不阻断启动。
-  - **定向保存**：`SaveFloatingPosition` 先 `Load()` 磁盘最新配置，只覆盖位置字段再写回，
-    避免用本进程的内存快照覆盖用户运行期间手改的其他项。
+  - **定向保存**：`SaveFloatingPosition` / `SaveSoundEnabled` 先 `Load()` 磁盘最新配置，
+    只覆盖自己那一个字段再写回，避免用本进程的内存快照覆盖用户运行期间手改的其他项。
+    **新加配置字段必须沿用这个约定**，不要图省事整份 `Save(_config)`。
   - 中文用 `JavaScriptEncoder.UnsafeRelaxedJsonEscaping` 原样写出（不转义成 `\uXXXX`），便于手工编辑。
 
 **尚未实现的预留扩展点**（结构已就位）：
@@ -647,7 +732,8 @@ BadgeWindow.BadgeClicked(type)   → App.OnBadgeCompleted         → Scheduler.
 - 设置界面（改间隔 / 勿扰）：只需在 `IConfigProvider` 层与 `ConfigStore` 上加，无需动调度与 UI。
 - 配置热加载（现为启动时读取一次，改 JSON 需重启，v1.2 待办 O4）。
 - 开机自启：写 `HKCU\...\Run` 注册表或启动文件夹（**当前不做**）。
-- 提示音：预留 `PlaySound(type)` 挂钩点（**当前不做**）。
+- 提示音音量 / 换音色：现为两条写死的合成配方（见 §8.9），只有总开关。
+  若要加音量或多音色，接缝在 `ZenTones` 的 `TargetPeak` 常量与 `SoundService` 的构造，无需动调度。
 
 - 上述本地文件均在用户本机 `%APPDATA%`，**不联网、不上传**，符合红线 1。
 
@@ -723,7 +809,8 @@ tooltip 第三行统一为 `Strings.BadgeClickHint` =「单击图标表示已完
 | 勿扰时段 | **做**（默认关闭，需用户手改 `Enabled: true`） |
 | 托盘「隐藏悬浮窗」 | **不提供**（会导致彻底且无感知地收不到提醒） |
 | 分发形态 | **自包含单文件 exe** |
-| 提示音 / 开机自启 | 当前**不做**，后续可加 |
+| 开机自启 | 当前**不做**，后续可加 |
+| 提示音 | **v2.1 已做**：到点颂钵（每批只一声）+ 单击完成的轻滴水；默认开启、托盘可关；纯代码合成无音频文件（§8.9）。音色由用户试听拍板，**不得改配方常量** |
 
 ### 14.2 剩余开放问题 / 已知遗留（v1.2 待办）
 
@@ -734,7 +821,10 @@ tooltip 第三行统一为 `Strings.BadgeClickHint` =「单击图标表示已完
 5. **设置界面**：目前只能手改 JSON；是否做一个最小设置窗口（改间隔 + 勿扰）。
 6. **WPF emoji 单色**：四类图标字形为单色白字，仅靠圆底色区分。若要彩色/更具辨识度的图形，
    需改用 `Path`/几何图形自绘（仍不引入外部图片文件）。
-7. **提示音 / 开机自启**：何时纳入。
+7. **开机自启**：何时纳入。
+8. **提示音音量不可调**（v2.1）：只有总开关，音量由合成时的目标峰值写死。
+9. **提示音的托盘开关未经真鼠标复验**（本机合成鼠标到不了本应用，见 CLAUDE.md 的验证手法说明）：
+   菜单项文字状态切换、回调与持久化已用反射 + `PerformClick` 逐条验证，但右键菜单里的实际观感待用户确认。
 
 ---
 
