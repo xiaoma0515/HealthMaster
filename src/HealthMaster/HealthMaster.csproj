@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>          <!-- 仅为托盘 NotifyIcon，零第三方依赖 -->
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>HealthMaster</AssemblyName>
+    <RootNamespace>HealthMaster</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>  <!-- Per-Monitor V2 DPI -->
+    <Version>1.0.0</Version>
+    <Product>健康提醒小助手</Product>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <!-- 明确不启用 ImplicitUsings：WinForms+WPF 同时开启会注入互相冲突的全局 using，改为显式引用 -->
+    <!-- WFAC010：WPF 需要在 manifest 中声明 Per-Monitor V2 DPI（WinForms 的 ApplicationHighDpiMode 不作用于 WPF）；
+         本应用仅用 WinForms 的 NotifyIcon、无 WinForms 窗体，故此告警无影响，显式抑制。 -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+</Project>
