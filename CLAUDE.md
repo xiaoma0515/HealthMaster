@@ -119,7 +119,10 @@
 - 托盘用**动作式文字**「关闭提醒声音 / 开启提醒声音」（描述"点下去会发生什么"，与紧邻的「暂停全部」方向一致），而非勾选框——`TrayMenuTheme` 刻意关掉了 `ShowImageMargin`/`ShowCheckMargin`，勾选标记无处可画。**用户已确认**；要真勾选框须先派 ui-designer 调边距槽。
 - 托盘关声音会 `Stop()` **打断正在响的那一声**（用户被吵到去关，最想要的就是立刻停）。
 - 📎 **已知限制（用户已确认「问题不大」，勿当 bug 修）**：① winmm 进程内只有一个播放槽，提醒音（2.9s）未播完时点图标会被完成音截断；② 音量不可调，只有开/关，接缝在 `ZenTones` 的 `TargetPeak` 常量。
-- 📎 **验证手法**：判断"是否真出声"别靠人耳，用 Core Audio `IAudioMeterInformation` 峰值表客观测量——静默基线约 0.001，两条音轨设计峰值 0.89 / 0.11 会在测量里精确复现。
+- 📎 **验证手法**：判断"是否真出声"别靠人耳，用 Core Audio `IAudioMeterInformation` 峰值表客观测量。
+- 🔥 **测声音的头号坑（已害我误判成「从没出过声」）**：**winmm 的 `PlaySound` 不挂在调用进程自己的音频会话上**（它走系统 "System Sounds" 会话），所以用 `IAudioSessionControl2.GetProcessId` 按 PID 找会话再测峰值，**永远返回"该进程无音频会话"**。必须改测**默认端点**（对 `IMMDevice` 直接 `Activate(IAudioMeterInformation)`）。代价是会把别的程序的声音一起算进来，靠时间戳对齐区分。
+  - 实测参考值（端点口径，采样 120–150ms）：提醒音 0.28–0.49 / 持续约 2.5s；完成音约 0.037 / 持续约 0.2s；静默基线 0。设计峰值 0.89 / 0.11 因采样间隔会测不满，属正常。
+- 🔊 **「用户说没听到声音」先查默认播放设备**：2026-07-26 用户报告没声音，实测提醒音与完成音其实**全部正常送达默认端点**，只是该机默认设备是 `Headphones (Muvit Pure)` 而非内置喇叭 `Reproduktory (Realtek(R) Audio)`，声音进了没在听的那一路。**别急着改代码**——先枚举端点、看默认是哪个、看端点音量与静音。切换默认音频设备会影响用户所有程序，属用户决定，不要擅自改。
 - 🔧 **测试隔离的坑（已踩过一次，四组 CPU 数据全糊、结论完全错）**：**给子进程设 `APPDATA` 环境变量对本项目无效**——`Environment.GetFolderPath(SpecialFolder.ApplicationData)` 走 `SHGetFolderPath` 读已知文件夹，**不看环境变量**，于是测试进程照样读到用户真实 config。正确做法：在**临时副本源码**里给 `ConfigStore` 加 `HM_TEST_APPDATA` 环境变量开关（生产代码不含此钩子），并另换单实例互斥名。
 - **成品 exe（自包含单文件，约 139MB，双击即用）**：`publish\selfcontained\HealthMaster.exe`（同目录 .pdb 可删）。覆盖前先备份，且需用户先退出正在运行的旧版进程（否则文件被占用）。
 - 提醒图标为**独立的无边框透明 Topmost 窗**（`ReminderBadgeWindow`），AttachTo 悬浮窗跟随其位置/显隐，刻意不塞进悬浮窗内部，以免动到悬浮窗的尺寸与 Left/Top 语义（位置记忆逻辑依赖它）。
