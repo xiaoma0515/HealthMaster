@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using HealthMaster.Models;
 using HealthMaster.Resources;
@@ -17,14 +16,8 @@ public sealed class ReminderBadgesViewModel
     private static readonly ReminderType[] Order =
         { ReminderType.Eye, ReminderType.Sedentary, ReminderType.Water, ReminderType.Exercise };
 
-    /// <summary>四类主题色（#AARRGGBB），用于区分图标。</summary>
-    private static readonly Dictionary<ReminderType, string> Accents = new()
-    {
-        [ReminderType.Eye]       = "#F22E7D32", // 绿
-        [ReminderType.Sedentary] = "#F2EF6C00", // 橙
-        [ReminderType.Water]     = "#F20277BD", // 蓝
-        [ReminderType.Exercise]  = "#F26A1B9A", // 紫
-    };
+    // 四类圆底配色不在这里：由 Themes\Controls.xaml 按 ReminderBadgeItem.Type 静态映射到
+    // Themes\Dark.xaml 的 Brush.Badge.* 资源。改色值请改那两处，别在 ViewModel 里加颜色字段。
 
     private readonly IReminderScheduler _scheduler;
 
@@ -40,8 +33,7 @@ public sealed class ReminderBadgesViewModel
         var def = _scheduler.GetDefinition(type);
         var item = new ReminderBadgeItem(
             type,
-            def.Glyph,
-            Accents[type],
+            def.IconData,
             $"{def.DisplayName}：{def.Body}{Environment.NewLine}{Strings.BadgeClickHint}");
 
         Items.Insert(InsertIndexFor(type), item);

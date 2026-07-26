@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 using HealthMaster.Resources;
+using HealthMaster.Themes;
 
 namespace HealthMaster.Services;
 
@@ -39,6 +40,9 @@ public sealed class TrayIconService : IDisposable
         menu.Items.Add(openConfigItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
+
+        // 深色 HUD 观感（纯外观，不改任何菜单行为）——须在菜单项全部 Add 之后调用
+        TrayMenuTheme.Apply(menu);
 
         _notifyIcon = new NotifyIcon
         {
@@ -79,13 +83,15 @@ public sealed class TrayIconService : IDisposable
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
         {
+            // 缩到 16px 显示时线条易发糊：留边距、收线宽、圆端点、高质量像素偏移
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Color.Transparent);
-            using var bg = new SolidBrush(Color.FromArgb(0x2E, 0x7D, 0x32));
-            g.FillEllipse(bg, 1, 1, 30, 30);
-            using var pen = new Pen(Color.White, 3.5f);
-            g.DrawLine(pen, 16, 9, 16, 23);
-            g.DrawLine(pen, 9, 16, 23, 16);
+            using var bg = new SolidBrush(Color.FromArgb(0x30, 0xD1, 0x58)); // Apple systemGreen(Dark)
+            g.FillEllipse(bg, 2, 2, 28, 28);
+            using var pen = new Pen(Color.White, 2.8f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+            g.DrawLine(pen, 16, 10, 16, 22);
+            g.DrawLine(pen, 10, 16, 22, 16);
         }
         // GetHicon 产生非托管句柄，交由 Icon 包装；生命周期与应用一致，退出时随进程释放
         return Icon.FromHandle(bmp.GetHicon());
@@ -94,6 +100,9 @@ public sealed class TrayIconService : IDisposable
     public void Dispose()
     {
         _notifyIcon.Visible = false;
+        // NotifyIcon.Dispose 不会释放挂上去的菜单，得自己来（先取引用，Dispose 后该属性不可再读）
+        var menu = _notifyIcon.ContextMenuStrip;
         _notifyIcon.Dispose();
+        menu?.Dispose();
     }
 }

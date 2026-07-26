@@ -1,0 +1,75 @@
+<!--
+    深色（macOS HUD）色板 —— 本项目唯一一套主题。
+
+    为什么不做浅色：悬浮窗与提醒图标是浮在**任意桌面壁纸**之上的 HUD，不是文档窗口。
+    macOS 自己的 HUD（音量/亮度 OSD、Spotlight 深色态）恒为深色材质，跟随系统翻白反而更难读。
+    用户已确认「恒深色 HUD，不做浅色主题」。
+
+    色值取 Apple 的 label / secondaryLabel / tertiaryLabel 与 System Colors（Dark 变体）。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ==== 卡片材质 ====
+         真毛玻璃（DWMWA_SYSTEMBACKDROP_TYPE）要求窗口不是分层窗口，而悬浮窗必须开
+         AllowsTransparency 才能有自定义圆角与卡片外的透明留白，二者互斥。
+         此处用「半透明深色 + 1px 内高光描边」做视觉近似（HUD 本身就是低模糊度暗材质）。 -->
+    <SolidColorBrush x:Key="Brush.Card.Bg"          Color="#D91C1C1E" />
+    <SolidColorBrush x:Key="Brush.Card.BgHover"     Color="#E62A2A2C" />
+    <SolidColorBrush x:Key="Brush.Card.StrokeInner" Color="#1FFFFFFF" />
+
+    <!-- ==== 三层伪阴影 ====
+         悬浮窗每秒重绘一次（倒计时 1Hz），且是分层窗口走软件渲染路径 —— DropShadowEffect
+         会变成每秒一次 CPU 模糊卷积的**常驻**开销，与「轻量低占用」红线冲突，故禁用一切 Effect。
+         替代：三个同心 Border 递减 alpha，纯几何填充，零着色器成本。 -->
+    <SolidColorBrush x:Key="Brush.Shadow.1" Color="#26000000" />
+    <SolidColorBrush x:Key="Brush.Shadow.2" Color="#1A000000" />
+    <SolidColorBrush x:Key="Brush.Shadow.3" Color="#0F000000" />
+
+    <!-- ==== 文本三级色阶（层次靠字重 + 色阶，不靠字号堆叠）==== -->
+    <SolidColorBrush x:Key="Brush.Text.Primary"   Color="#F2FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Text.Secondary" Color="#99EBEBF5" />
+    <SolidColorBrush x:Key="Brush.Text.Tertiary"  Color="#4DEBEBF5" />
+
+    <!-- 「待完成 / 已暂停」胶囊底 -->
+    <SolidColorBrush x:Key="Brush.Fill.Quaternary" Color="#14FFFFFF" />
+
+    <!-- ==== 四类强调色（Apple System Colors，Dark 变体）====
+         key 名与 Resources/ThemeKeys.cs 一一对应，ViewModel 只产出 key 字符串。 -->
+    <SolidColorBrush x:Key="Brush.Accent.Eye"       Color="#30D158" />
+    <SolidColorBrush x:Key="Brush.Accent.Sedentary" Color="#FF9F0A" />
+    <SolidColorBrush x:Key="Brush.Accent.Water"     Color="#64D2FF" />
+    <SolidColorBrush x:Key="Brush.Accent.Exercise"  Color="#5E5CE6" />
+
+    <!-- ==== 提醒图标圆底：双停靠点垂直微渐变（±8% 明度）====
+         这是 macOS/iOS 图标最典型的「微立体」手法，LinearGradientBrush 是几何填充、非着色器，
+         成本与纯色平涂等同。 -->
+    <LinearGradientBrush x:Key="Brush.Badge.Eye" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#F23FD06A" />
+        <GradientStop Offset="1" Color="#F224A94E" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Brush.Badge.Sedentary" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#F2FFA51F" />
+        <GradientStop Offset="1" Color="#F2F08300" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Brush.Badge.Water" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#F243BDF0" />
+        <GradientStop Offset="1" Color="#F21E9AD6" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="Brush.Badge.Exercise" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#F26B69E0" />
+        <GradientStop Offset="1" Color="#F24A48C4" />
+    </LinearGradientBrush>
+
+    <!-- 图标顶部内高光（叠在圆底之上，模拟上缘受光） -->
+    <LinearGradientBrush x:Key="Brush.Badge.Gloss" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0"    Color="#26FFFFFF" />
+        <GradientStop Offset="0.55" Color="#00FFFFFF" />
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="Brush.Badge.Stroke"      Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Badge.StrokeHover" Color="#40FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Badge.Dim"         Color="#26000000" />
+    <SolidColorBrush x:Key="Brush.Badge.Icon"        Color="#FFFFFFFF" />
+
+</ResourceDictionary>

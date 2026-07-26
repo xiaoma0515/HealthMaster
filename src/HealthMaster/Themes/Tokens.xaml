@@ -1,0 +1,62 @@
+<!--
+    设计 token（与主题无关的度量）：字体族 / 字号 / 字重 / 圆角 / 间距 / 时长。
+    与主题相关的颜色一律放 Dark.xaml；控件样式放 Controls.xaml。
+    所有度量用 StaticResource 引用（省一层动态查找），颜色画刷才用 DynamicResource。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- ==== 字体 ====
+         Windows 上没有也不可分发 SF Pro，用 Win11 自带的 Segoe UI Variable 做最近似替代。
+         西文/数字必须排在族串最前：WPF 按族串顺序逐字符回退，中文会自动落到微软雅黑 UI；
+         若把雅黑放前面，数字会用雅黑的非等宽字形，倒计时逐秒左右抖动。 -->
+    <FontFamily x:Key="Font.UI">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI</FontFamily>
+    <FontFamily x:Key="Font.Small">Segoe UI Variable Small, Segoe UI, Microsoft YaHei UI</FontFamily>
+
+    <!-- ==== 字号 ==== -->
+    <sys:Double x:Key="Fs.Caption">11</sys:Double>
+    <sys:Double x:Key="Fs.Pill">11</sys:Double>
+    <sys:Double x:Key="Fs.Body">13</sys:Double>
+    <sys:Double x:Key="Fs.Tip">12</sys:Double>
+
+    <!-- ==== 圆角 ====
+         WPF 的 CornerRadius 是标准圆弧，做不出 Apple 的连续曲率（squircle）；
+         在 13px 半径这个尺度上二者肉眼不可辨，故不自绘 Path，收益远小于成本。 -->
+    <CornerRadius x:Key="R.pill">7</CornerRadius>
+    <CornerRadius x:Key="R.tip">8</CornerRadius>
+    <CornerRadius x:Key="R.card">13</CornerRadius>
+    <CornerRadius x:Key="R.shadow1">14</CornerRadius>
+    <CornerRadius x:Key="R.shadow2">15</CornerRadius>
+    <CornerRadius x:Key="R.shadow3">16</CornerRadius>
+    <CornerRadius x:Key="R.badge">17</CornerRadius>
+
+    <!-- ==== 间距（4pt 栅格）==== -->
+    <Thickness x:Key="Pad.Card.Compact">12,6</Thickness>
+    <Thickness x:Key="Pad.Card.Expanded">16,12</Thickness>
+    <Thickness x:Key="Pad.Pill">6,1</Thickness>
+    <Thickness x:Key="Pad.Tip">10,7</Thickness>
+    <Thickness x:Key="M.Dot">0,0,8,0</Thickness>
+    <Thickness x:Key="M.Header">0,0,0,8</Thickness>
+    <Thickness x:Key="M.ShadowLayer">1</Thickness>
+    <Thickness x:Key="M.Badge">6</Thickness>
+
+    <!-- ==== 度量 ==== -->
+    <sys:Double x:Key="Sz.Dot">6</sys:Double>
+    <sys:Double x:Key="Sz.Row">22</sys:Double>
+    <!-- 时间列固定宽 + 右对齐：即使目标机缺 Segoe UI Variable 回退到非等宽数字，四行也不会歪、不会抖 -->
+    <sys:Double x:Key="Sz.TimeCol">68</sys:Double>
+    <!-- 展开态卡片内容固定宽：16+144+16 = 176，避免每秒因文本宽度变化触发 SizeToContent 重排 -->
+    <sys:Double x:Key="Sz.ExpandedContent">144</sys:Double>
+    <sys:Double x:Key="Sz.CardMinWidth">118</sys:Double>
+    <!-- 图标：34 + 左右 Margin 各 6 = 46，与图标窗写死的 Width="46" 严格一致（不得改动） -->
+    <sys:Double x:Key="Sz.Badge">34</sys:Double>
+    <sys:Double x:Key="Sz.BadgeIcon">18</sys:Double>
+
+    <!-- ==== 动效时长（全部一次性触发，绝无 RepeatBehavior="Forever"）==== -->
+    <Duration x:Key="Dur.HoverIn">0:0:0.15</Duration>
+    <Duration x:Key="Dur.HoverOut">0:0:0.18</Duration>
+    <Duration x:Key="Dur.Press">0:0:0.09</Duration>
+    <Duration x:Key="Dur.Fade">0:0:0.14</Duration>
+
+</ResourceDictionary>

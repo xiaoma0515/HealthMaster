@@ -416,7 +416,7 @@ XAML / 窗口属性要点：
   - 四类图标全挂着时，折叠态显示「待完成」。
 - **保持置顶**：极少数场景 Topmost 会被其他全屏程序压过；依赖 `Topmost=true` 即可，不做额外 hack（可选增强）。
 - **位置**：跨重启记忆已实现（`AppConfig.FloatingX/Y`）。首启放屏幕右下角安全区（`WorkArea.Right-170, Bottom-70`）；
-  `Loaded` 后按 §7.1 夹紧到工作区内，避免记忆位置因分辨率/接屏变化落到屏幕外。
+  见 §7.2 的锚点模型（含记忆位置因分辨率/接屏变化落到屏幕外时的夹紧）。
 
 倒计时文本格式：`mm:ss`（<1h）或 `H:mm:ss`（≥1h）。到点前不做特殊色变，后续可加「临近高亮」。
 
@@ -431,8 +431,47 @@ XAML / 窗口属性要点：
 4. 用 `TransformFromDevice` 把工作区矩形换算回 DIP 返回。
 
 **第 2/4 步的 DPI 换算不可省**：`Screen.WorkingArea` 是物理像素，WPF 的 `Left/Top` 是 DIP，
-在非 100% 缩放的屏幕上直接混用会算出错误位置。`App.ClampToWorkArea` 与
+在非 100% 缩放的屏幕上直接混用会算出错误位置。`FloatingWindow.ApplyPosition`（§7.2）与
 `ReminderBadgeWindow.UpdatePlacement` **共用**此 helper，保证两窗判断的是同一块屏幕。
+
+`For(window, centerDip)` 重载允许调用方指定判屏用的中心点：悬浮窗夹紧时算的是「窗口即将
+移动到的位置」，用当前位置判屏在贴近屏幕交界时会判到隔壁屏。
+
+### 7.2 锚点位置模型（v2.1，展开态不越界）
+
+**问题**：本窗是 `SizeToContent="WidthAndHeight"`，悬停展开时宽高同时变大（实测折叠
+123.2×36 → 展开 182.4×142.4，宽 +59、高 +106 DIP）。而 `Left/Top` 指的是**左上角**，
+所以「原地变大」等于**向右下方生长**——贴右缘时时间列被裁到屏幕外，贴下缘时整块沉到任务栏下。
+v2 把展开态加宽后量级从 v1.1 的约 20 DIP 涨到 59 DIP，用户实测报障。
+
+**解法**：把「用户认定的位置」与「窗口当前实际坐标」拆成两个概念。
+
+| 概念 | 载体 | 何时改变 |
+|------|------|----------|
+| 锚点 | `FloatingWindow._anchorLeft/_anchorTop`（只读暴露为 `AnchorLeft/AnchorTop`） | 仅 `SetPosition`（首次放置）与**拖动结束**时 |
+| 实际坐标 | `Window.Left/Top` | 每次 `SizeChanged` 由 `ApplyPosition()` 重算 |
+
+`ApplyPosition()` = **回到锚点 → 按当前实际尺寸夹进所在屏工作区**（右/下缘先推，左/上缘后推，
+故窗口大于工作区时以左上角对齐）。于是：
+
+- 展开若越界，就向左 / 向上生长恰好够用的量，展开态必定完整可见；
+- 收起时尺寸变回小的，夹紧成为恒等变换，**必然精确回到锚点**；
+- 每一次都是**从同一个锚点重算**而非在上次结果上累加，因此反复悬停**不会漂移**
+  （实测连续 15 轮进出，偏移 0.0000 DIP）。
+
+两条容易踩的坑：
+
+1. **不会抖动循环**：夹紧后的新矩形必定完整包含夹紧前的旧矩形（位移量 ≤ 尺寸增量），
+   所以窗口左移不会从光标底下跑掉，不存在「展开→丢失 hover→收起→又展开」的振荡。
+2. **拖动过程中绝不夹紧**：`DragMove()` 期间逐帧夹会让拖动不跟手，故只在
+   `DragMove()` 返回后（松手）夹一次，并把夹紧结果回写为新锚点再触发 `PositionChanged`。
+   实测拖动中窗口跟随光标误差 ≤0.8 DIP（亚像素取整），且允许临时拖出工作区、松手才归位。
+
+**持久化必须存锚点**（`AnchorLeft/AnchorTop`），不能存 `Left/Top`：后者在展开态是被夹紧过的
+临时坐标，存进去会让下次启动时位置莫名左移。`OnFloatingMoved` 与 `SaveFloatingPositionSafe` 均已改用锚点。
+
+图标窗跟随的是锚点窗口的 `LocationChanged`，展开时会一起左移、收起时一起回来，
+其自身的工作区夹紧逻辑不受影响（实测四个边缘均在工作区内、间距恒为 6 DIP、无重复图标）。
 
 ---
 
@@ -519,13 +558,23 @@ XAML / 窗口属性要点：
 
 ### 8.7 图标视觉与数据
 
-- `ReminderBadgeItem`：不可变（`Type` / `Glyph` / `Accent` / `Tooltip`），冒出后内容不变，故**无需** `INotifyPropertyChanged`。
-- 圆底 `Border Width/Height=36, CornerRadius=18`，背景为四类主题色（`#F2` 透明度）：
-  护眼绿 `#2E7D32`、久坐橙 `#EF6C00`、补水蓝 `#0277BD`、运动紫 `#6A1B9A`。
-- 字形取系统 `Segoe UI Emoji` 的 emoji（👁 / 🚶 / 💧 / 🤸），**不引入任何外部图片文件**。
-  **已知限制**：WPF 不渲染彩色 emoji，字形呈单色白字，四类靠**圆底颜色**区分（这是可接受的现状，不是 bug）。
-- 悬停反馈：`IsMouseOver` 触发器放大到 1.15 倍并加亮描边；`IsPressed` 降低不透明度。
-  **纯 Trigger，无 Storyboard、无动画循环、无额外定时器**（红线 2）。
+> **v2 已重写本节**（2026-07-26）。以下为现行实现；v1.1 的 emoji + Material 色方案已废弃。
+
+- `ReminderBadgeItem`：不可变（`Type` / `Icon` / `Tooltip`），冒出后内容不变，故**无需** `INotifyPropertyChanged`。
+  `Icon` 为已 `Freeze()` 的 `Geometry`，四类经静态字典缓存、跨图标共享（只解析一次）。
+  ~~`Glyph`(string)~~ 与 ~~`Accent`~~ 已于 v2 删除——圆底色改由 `Themes\Controls.xaml` 按 `Type` 映射到 `Brush.Badge.*`。
+- 圆底直径 34 + `Margin 6`（**总宽恰好 46，与图标窗写死的 `Width="46"` 严格咬合，改任一处都会破坏宽度收敛**）。
+  配色为 Apple System Colors 双停靠点微渐变：护眼绿 `#34C759`、久坐橙 `#FF9500`、补水青 `#32ADE6`、运动靛 `#5856D6`。
+- 字形为**自绘矢量 `Path`**（`Resources\IconGeometries.cs`，24×24 视框的 Path Mini-Language 常量，纯填充造型；
+  护眼用 `F0`/EvenOdd 挖空瞳孔）。仍**不引入任何外部图片或字体文件**。
+  这解决了 v1.1 的已知限制：WPF 不渲染彩色 emoji、字形只能是单色白字。
+- 悬停反馈：hover 放大 1.10 / 150ms EaseOut（内层 `Scale`），pressed 0.94 / 90ms + 压暗（外层 `Scale`）。
+  两层独立，避免动画互相抢占。**全部为一次性 Storyboard，无 `RepeatBehavior=Forever`、无动画循环、无额外定时器**（红线 2）。
+- 阴影：图标窗内容静态，**允许** `DropShadowEffect`（`BlurRadius=3, ShadowDepth=1`）。
+  ⚠️ 参数不可随意加大：Margin 只有 6px 余量，实测该参数下水平外扩 4.7 / 底部 5.7 / 顶部 3.7，均 ≤6；
+  设计初稿的 `BlurRadius=4` 会使底部外扩 6.7px 而**被裁切**。
+  对照之下**悬浮窗全窗禁用任何 `Effect`**——它是分层窗口走软件渲染且 1Hz 重绘，真阴影等于每秒 CPU 卷积；
+  那里用三层同心 `Border`（逐层 `Margin 1`）做伪阴影。
 - Tooltip：`{DisplayName}：{Body}` 换行 + `Strings.BadgeClickHint`（「单击图标表示已完成」）。
 
 ### 8.8 事件链路

@@ -90,31 +90,22 @@ public partial class App : Application
         w.WindowStartupLocation = WindowStartupLocation.Manual;
         var area = SystemParameters.WorkArea;
 
-        if (_config.FloatingX is double x && _config.FloatingY is double y)
+        double x, y;
+        if (_config.FloatingX is double cx && _config.FloatingY is double cy)
         {
-            w.Left = x;
-            w.Top = y;
+            x = cx;
+            y = cy;
         }
         else
         {
             // 首启放屏幕右下角安全区
-            w.Left = area.Right - 170;
-            w.Top = area.Bottom - 70;
+            x = area.Right - 170;
+            y = area.Bottom - 70;
         }
 
-        // 尺寸已知后夹紧到工作区内，避免记忆位置落到屏幕外（如分辨率变化）
-        w.Loaded += (_, _) => ClampToWorkArea(w);
-    }
-
-    private static void ClampToWorkArea(Window w)
-    {
-        if (w.ActualWidth <= 0 || w.ActualHeight <= 0) return;
-        // 用窗口所在那块屏幕的工作区：记忆位置在副屏时，按主屏工作区夹紧会把悬浮窗拽回主屏
-        var area = WorkAreaHelper.For(w);
-        if (w.Left + w.ActualWidth > area.Right) w.Left = area.Right - w.ActualWidth;
-        if (w.Top + w.ActualHeight > area.Bottom) w.Top = area.Bottom - w.ActualHeight;
-        if (w.Left < area.Left) w.Left = area.Left;
-        if (w.Top < area.Top) w.Top = area.Top;
+        // 只设锚点：夹紧（含展开态越界、记忆位置落到屏幕外等）由 FloatingWindow 自己在
+        // 尺寸就绪 / 每次尺寸变化时统一处理，见 FloatingWindow 的位置语义说明。
+        w.SetPosition(x, y);
     }
 
     private void OnFloatingMoved(double left, double top)
@@ -132,8 +123,9 @@ public partial class App : Application
     {
         try
         {
+            // 存锚点而非 Left/Top：退出瞬间若正处于展开态，Left 可能是被夹紧后的临时坐标
             if (_floating != null)
-                _configStore.SaveFloatingPosition(_floating.Left, _floating.Top);
+                _configStore.SaveFloatingPosition(_floating.AnchorLeft, _floating.AnchorTop);
         }
         catch { /* 忽略 */ }
     }

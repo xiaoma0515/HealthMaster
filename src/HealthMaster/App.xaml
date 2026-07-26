@@ -3,5 +3,23 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
+        <ResourceDictionary>
+            <!--
+                ⚠️ 以下三个字典的顺序不可调整，Controls 必须排在最后。
+                Controls.xaml 自身不 merge Tokens/Dark，它靠「同一 MergedDictionaries 里先合并的
+                字典可被后合并的字典用 StaticResource 查到」这条规则取值。
+                一旦调换顺序，编译期不报任何错，运行时才在悬浮窗构造里抛 XamlParseException
+                （找不到 StaticResource），表现为「一启动就崩窗」且堆栈指向 XAML 而非这里。
+                如需重排，先给 Controls.xaml 补上自己的 MergedDictionaries 再动。
+            -->
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 1. 度量 token（字体 / 字号 / 圆角 / 间距 / 时长），与主题无关 -->
+                <ResourceDictionary Source="Themes/Tokens.xaml" />
+                <!-- 2. 色板：恒深色 macOS HUD 一套（用户已确认不做浅色主题） -->
+                <ResourceDictionary Source="Themes/Dark.xaml" />
+                <!-- 3. 控件样式，StaticResource 依赖上面两个字典，必须最后合并 -->
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

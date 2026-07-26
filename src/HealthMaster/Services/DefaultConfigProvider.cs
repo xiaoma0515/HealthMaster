@@ -20,15 +20,15 @@ public sealed class DefaultConfigProvider : IConfigProvider
     {
         return new[]
         {
-            Build(ReminderType.Eye,       "护眼", "护眼提醒",  20, "👁", Strings.EyeBody),
-            Build(ReminderType.Sedentary, "久坐", "久坐提醒",  45, "🚶", Strings.SedentaryBody),
-            Build(ReminderType.Water,     "补水", "补水提醒",  60, "💧", Strings.WaterBody),
-            Build(ReminderType.Exercise,  "运动", "运动提醒", 120, "🤸", Strings.ExerciseBody),
+            Build(ReminderType.Eye,       "护眼", "护眼提醒",  20, IconGeometries.Eye,       Strings.EyeBody),
+            Build(ReminderType.Sedentary, "久坐", "久坐提醒",  45, IconGeometries.Sedentary, Strings.SedentaryBody),
+            Build(ReminderType.Water,     "补水", "补水提醒",  60, IconGeometries.Water,     Strings.WaterBody),
+            Build(ReminderType.Exercise,  "运动", "运动提醒", 120, IconGeometries.Exercise,  Strings.ExerciseBody),
         };
     }
 
     private ReminderDefinition Build(ReminderType type, string shortName, string displayName,
-        int defaultMinutes, string glyph, string body)
+        int defaultMinutes, string iconData, string body)
     {
         int minutes = defaultMinutes;
         if (_config.IntervalMinutes.TryGetValue(type.ToString(), out var m) && m > 0)
@@ -36,6 +36,6 @@ public sealed class DefaultConfigProvider : IConfigProvider
 
         return new ReminderDefinition(
             type, shortName, displayName,
-            TimeSpan.FromMinutes(minutes), body, glyph);
+            TimeSpan.FromMinutes(minutes), body, iconData);
     }
 }

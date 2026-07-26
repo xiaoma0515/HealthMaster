@@ -1,0 +1,309 @@
+<!--
+    控件样式：悬浮窗卡片行 / 折叠行 / 提醒图标 / 图标 tooltip。
+    颜色一律 DynamicResource（换色只改 Dark.xaml），度量一律 StaticResource（省一层查找）。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:m="clr-namespace:HealthMaster.Models">
+
+    <!-- ================= 悬浮窗：类别色点 =================
+         CountdownRowViewModel.AccentKey 是资源 key 字符串（护眼/久坐/补水/运动 + 中性）。
+         WPF 无法把「运行时字符串」直接当资源 key 做 DynamicResource 查找，
+         故用 5 条 DataTrigger 做 key → Brush 的静态映射（纯 XAML，不需要任何转换器代码）。
+         6px 下用纯主色而非渐变，渐变在这个尺寸会变脏。 -->
+    <Style x:Key="S.Dot" TargetType="Ellipse">
+        <Setter Property="Width"  Value="{StaticResource Sz.Dot}" />
+        <Setter Property="Height" Value="{StaticResource Sz.Dot}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="{StaticResource M.Dot}" />
+        <Setter Property="Fill"   Value="{DynamicResource Brush.Text.Tertiary}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AccentKey}" Value="Brush.Accent.Eye">
+                <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Eye}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding AccentKey}" Value="Brush.Accent.Sedentary">
+                <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Sedentary}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding AccentKey}" Value="Brush.Accent.Water">
+                <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Water}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding AccentKey}" Value="Brush.Accent.Exercise">
+                <Setter Property="Fill" Value="{DynamicResource Brush.Accent.Exercise}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ================= 悬浮窗：值（倒计时 或 状态胶囊）=================
+         HasTime=true 显示 Tabular 数字；false 显示「待完成 / 已暂停」胶囊。
+         字号/字重/前景色刻意不在此设定，由外层 ContentControl 通过属性继承传入，
+         折叠态（SemiBold）与展开态（Medium）复用同一份模板。 -->
+    <DataTemplate x:Key="Tpl.Value">
+        <Grid HorizontalAlignment="Right" VerticalAlignment="Center">
+            <TextBlock x:Name="Time" Text="{Binding TimeText}"
+                       TextAlignment="Right" VerticalAlignment="Center"
+                       Typography.NumeralAlignment="Tabular" />
+            <Border x:Name="Pill" Visibility="Collapsed"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    CornerRadius="{StaticResource R.pill}"
+                    Padding="{StaticResource Pad.Pill}"
+                    Background="{DynamicResource Brush.Fill.Quaternary}">
+                <TextBlock Text="{Binding StatusText}"
+                           FontSize="{StaticResource Fs.Pill}" FontWeight="Medium"
+                           Foreground="{DynamicResource Brush.Text.Secondary}" />
+            </Border>
+        </Grid>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding HasTime}" Value="False">
+                <Setter TargetName="Time" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="Pill" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- ================= 悬浮窗：展开态单行 =================
+         三列 Auto / * / 68：名称随内容，时间列定宽右对齐 —— 四行数字严格对齐且逐秒不抖。 -->
+    <DataTemplate x:Key="Tpl.Row">
+        <Grid Height="{StaticResource Sz.Row}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Style="{StaticResource S.Dot}" />
+                <TextBlock Text="{Binding Name}"
+                           FontSize="{StaticResource Fs.Body}"
+                           Foreground="{DynamicResource Brush.Text.Primary}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- 定宽 68 放在 ContentControl 上而非 ColumnDefinition 上：
+                 ColumnDefinition.Width 需要 GridLength，直接喂 Double 资源会在模板展开时抛
+                 XamlParseException（且发生在 Measure 里，会变成布局重入的崩溃循环）。 -->
+            <ContentControl Grid.Column="2" Content="{Binding}"
+                            ContentTemplate="{StaticResource Tpl.Value}"
+                            Width="{StaticResource Sz.TimeCol}"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            FontSize="{StaticResource Fs.Body}" FontWeight="Medium"
+                            Foreground="{DynamicResource Brush.Text.Primary}" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- ================= 悬浮窗：折叠态（最近一项）=================
+         「已暂停 / 全部待完成」时 Name 为空串，此时必须把名称整块 Collapsed，
+         否则它 8px 的右外边距仍占位，内容会整体偏移 8px、看起来没居中。 -->
+    <DataTemplate x:Key="Tpl.Compact">
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Ellipse Style="{StaticResource S.Dot}" />
+            <TextBlock x:Name="Nm" Text="{Binding Name}"
+                       FontSize="{StaticResource Fs.Body}"
+                       Foreground="{DynamicResource Brush.Text.Secondary}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ContentControl Content="{Binding}"
+                            ContentTemplate="{StaticResource Tpl.Value}"
+                            VerticalAlignment="Center"
+                            FontSize="{StaticResource Fs.Body}" FontWeight="SemiBold"
+                            Foreground="{DynamicResource Brush.Text.Primary}" />
+        </StackPanel>
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Name}" Value="">
+                <Setter TargetName="Nm" Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- ================= 提醒图标 tooltip =================
+         深色 HUD 卡片观感；ToolTip 自带的 Popup 恒为透明层，故圆角可见。
+         HasDropShadow=False：不用系统阴影 chrome，避免额外留白。 -->
+    <Style TargetType="ToolTip">
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontFamily" Value="{StaticResource Font.UI}" />
+        <Setter Property="FontSize" Value="{StaticResource Fs.Tip}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{DynamicResource Brush.Card.Bg}"
+                            BorderBrush="{DynamicResource Brush.Card.StrokeInner}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource R.tip}"
+                            Padding="{StaticResource Pad.Tip}">
+                        <TextBlock Text="{TemplateBinding Content}"
+                                   TextWrapping="Wrap" MaxWidth="240" LineHeight="18"
+                                   Foreground="{DynamicResource Brush.Text.Primary}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= 提醒图标按钮 =================
+         尺寸严格 34 + Margin 6×2 = 46，与图标窗写死的 Width="46" 完全一致（该写死不可改）。
+         图标窗内容是静态的（只在图标增减 / hover 时重绘），故此处允许真 DropShadowEffect；
+         悬浮窗因 1Hz 常驻重绘则禁用一切 Effect。
+
+         外扩余量核算（窗口左右各只有 6px 余量，超出即被窗口边缘裁切）：
+           水平：blur 3 + hover 放大 (34×0.10)/2 = 1.7  →  4.7 ≤ 6  ✅
+           底部：blur 3 + ShadowDepth 1 + 1.7          →  5.7 ≤ 6  ✅
+           顶部：blur 3 − 1 + 1.7                      →  3.7 ≤ 6  ✅
+         （原方案 blur=4 在底部为 6.7 > 6 会被裁 0.7px，故收到 blur=3。） -->
+    <Style x:Key="S.Badge" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Margin" Value="{StaticResource M.Badge}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent.Eye}" />
+        <Setter Property="ToolTipService.InitialShowDelay" Value="400" />
+        <Setter Property="ToolTipService.ShowDuration" Value="8000" />
+        <Setter Property="ToolTipService.Placement" Value="Left" />
+        <Setter Property="ToolTipService.HorizontalOffset" Value="-8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <!-- 两层独立 ScaleTransform：外层管「按下收缩」、内层管「悬停放大」，
+                         互不抢占同一个动画属性，避免按下→松开时两条 Storyboard 打架。 -->
+                    <Grid x:Name="Press" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform ScaleX="1" ScaleY="1" />
+                        </Grid.RenderTransform>
+                        <Grid x:Name="Root"
+                              Width="{StaticResource Sz.Badge}" Height="{StaticResource Sz.Badge}"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Grid.RenderTransform>
+                            <Grid.Effect>
+                                <DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270"
+                                                  Opacity="0.35" Color="#000000" />
+                            </Grid.Effect>
+
+                            <!-- 1) 双停靠点渐变圆底 -->
+                            <Border CornerRadius="{StaticResource R.badge}"
+                                    Background="{TemplateBinding Background}" />
+                            <!-- 2) 顶部内高光 -->
+                            <Border CornerRadius="{StaticResource R.badge}"
+                                    Background="{DynamicResource Brush.Badge.Gloss}" />
+                            <!-- 3) 定界细环（比 v1.1 的 #59FFFFFF 弱一半，不抢眼） -->
+                            <Border x:Name="Ring" CornerRadius="{StaticResource R.badge}"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource Brush.Badge.Stroke}" />
+                            <!-- 4) 内容：矢量 Path（由 ItemTemplate 提供） -->
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <!-- 5) 按下压暗层 -->
+                            <Border x:Name="Dim" Opacity="0"
+                                    CornerRadius="{StaticResource R.badge}"
+                                    Background="{DynamicResource Brush.Badge.Dim}" />
+                        </Grid>
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <!-- 悬停放大：一次性 Storyboard，150ms EaseOut；RenderTransform 不参与布局，
+                             不会触发 SizeChanged，因此与图标窗的延后定位逻辑零交互。 -->
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush"
+                                    Value="{DynamicResource Brush.Badge.StrokeHover}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Root"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                         To="1.10" Duration="{StaticResource Dur.HoverIn}">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="Root"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                         To="1.10" Duration="{StaticResource Dur.HoverIn}">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Root"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                         To="1.0" Duration="{StaticResource Dur.HoverOut}">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="Root"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                         To="1.0" Duration="{StaticResource Dur.HoverOut}">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+
+                        <!-- 按下：轻微收缩 + 压暗（Apple 的按下手感），
+                             取代 v1.1 的 Opacity=0.75（那是「消失」不是「被按下」）。 -->
+                        <Trigger Property="IsPressed" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Press"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                         To="0.94" Duration="{StaticResource Dur.Press}" />
+                                        <DoubleAnimation Storyboard.TargetName="Press"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                         To="0.94" Duration="{StaticResource Dur.Press}" />
+                                        <DoubleAnimation Storyboard.TargetName="Dim"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource Dur.Press}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Press"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                         To="1.0" Duration="{StaticResource Dur.Press}" />
+                                        <DoubleAnimation Storyboard.TargetName="Press"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                         To="1.0" Duration="{StaticResource Dur.Press}" />
+                                        <DoubleAnimation Storyboard.TargetName="Dim"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource Dur.Press}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+
+        <!-- 四类圆底渐变：按 ReminderBadgeItem.Type 静态映射。
+             （颜色留在资源字典里，ViewModel 侧的 Accent 字符串不再参与取色。） -->
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Type}" Value="{x:Static m:ReminderType.Eye}">
+                <Setter Property="Background" Value="{DynamicResource Brush.Badge.Eye}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Type}" Value="{x:Static m:ReminderType.Sedentary}">
+                <Setter Property="Background" Value="{DynamicResource Brush.Badge.Sedentary}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Type}" Value="{x:Static m:ReminderType.Water}">
+                <Setter Property="Background" Value="{DynamicResource Brush.Badge.Water}" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Type}" Value="{x:Static m:ReminderType.Exercise}">
+                <Setter Property="Background" Value="{DynamicResource Brush.Badge.Exercise}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>

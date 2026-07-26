@@ -11,4 +11,4 @@ public sealed record ReminderDefinition(
     string DisplayName,   // 完整名称，如 "护眼提醒"
     TimeSpan Interval,    // 提醒间隔
     string Body,          // 一句可执行建议（用于提醒图标 tooltip 的第二行）
-    string Glyph);        // 提醒图标字形（emoji，无外部图片文件）
+    string IconData);     // 提醒图标的矢量路径数据（24×24 视框，见 Resources.IconGeometries，无外部图片文件）

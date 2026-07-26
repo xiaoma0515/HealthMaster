@@ -15,14 +15,20 @@ public static class WorkAreaHelper
     /// <see cref="Screen.WorkingArea"/> 是物理像素，需按该窗口的 DPI 变换回 DIP；
     /// 窗口尚未取得句柄（拿不到 DPI 信息）时退回主屏工作区。
     /// </summary>
-    public static Rect For(Window window)
+    public static Rect For(Window window) => For(window, new Point(
+        window.Left + window.ActualWidth / 2,
+        window.Top + window.ActualHeight / 2));
+
+    /// <summary>
+    /// 同上，但由调用方指定用于判定所在屏幕的中心点（DIP）。
+    /// 悬浮窗展开/收起时窗口正处于「即将移动到的位置」而非当前位置，
+    /// 用目标位置的中心点判屏，避免临近屏幕边界时判到隔壁屏。
+    /// </summary>
+    public static Rect For(Window window, Point centerDip)
     {
         var ct = PresentationSource.FromVisual(window)?.CompositionTarget;
         if (ct == null) return SystemParameters.WorkArea;
 
-        var centerDip = new Point(
-            window.Left + window.ActualWidth / 2,
-            window.Top + window.ActualHeight / 2);
         var centerPx = ct.TransformToDevice.Transform(centerDip);
 
         var wa = Screen.FromPoint(new System.Drawing.Point((int)centerPx.X, (int)centerPx.Y)).WorkingArea;

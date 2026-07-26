@@ -10,45 +10,113 @@
         Topmost="True"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual"
-        FontFamily="Microsoft YaHei UI, Segoe UI"
+        FontFamily="{StaticResource Font.UI}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        UseLayoutRounding="True"
         MouseLeftButtonDown="OnMouseLeftButtonDown">
 
-    <Border Background="#E6202020" CornerRadius="10" Padding="14,9" MinWidth="118">
-        <Grid>
-            <!-- 折叠态：显示最近一项 -->
-            <TextBlock Text="{Binding Compact}"
-                       Foreground="#F2F2F2" FontSize="13" FontWeight="SemiBold"
-                       TextAlignment="Center" VerticalAlignment="Center">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Visible" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
+    <!--
+        macOS HUD 观感的分层结构（由外到内）：
+          三层伪阴影 Border → 卡片（半透明深色 + 1px 内高光描边）→ 折叠态 / 展开态内容。
 
-            <!-- 展开态：悬停显示四路倒计时 -->
-            <StackPanel>
-                <StackPanel.Style>
-                    <Style TargetType="StackPanel">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </StackPanel.Style>
-                <TextBlock Text="{Binding Header}" Foreground="#8FD08F" FontSize="11" Margin="0,0,0,5" />
-                <TextBlock Text="{Binding Eye}"       Foreground="#F2F2F2" FontSize="13" Margin="0,1" />
-                <TextBlock Text="{Binding Sedentary}" Foreground="#F2F2F2" FontSize="13" Margin="0,1" />
-                <TextBlock Text="{Binding Water}"     Foreground="#F2F2F2" FontSize="13" Margin="0,1" />
-                <TextBlock Text="{Binding Exercise}"  Foreground="#F2F2F2" FontSize="13" Margin="0,1" />
-            </StackPanel>
-        </Grid>
+        为什么用「三个同心 Border」而不是 DropShadowEffect：
+        本窗是 AllowsTransparency 的分层窗口，WPF 对其走软件渲染路径，Effect 由 CPU 执行；
+        而倒计时 1Hz 刷新意味着每秒一次全窗重绘 —— 挂 Effect 就是每秒一次 CPU 模糊卷积的
+        **常驻**开销，与「轻量低占用」红线直接冲突。三层几何填充零着色器成本，
+        在 13px 圆角这个尺度上与真阴影几乎无差别。**本窗禁止出现任何 Effect。**
+    -->
+    <Border Background="{DynamicResource Brush.Shadow.3}" CornerRadius="{StaticResource R.shadow3}">
+        <Border Background="{DynamicResource Brush.Shadow.2}" CornerRadius="{StaticResource R.shadow2}"
+                Margin="{StaticResource M.ShadowLayer}">
+            <Border Background="{DynamicResource Brush.Shadow.1}" CornerRadius="{StaticResource R.shadow1}"
+                    Margin="{StaticResource M.ShadowLayer}">
+
+                <Border x:Name="Card"
+                        Margin="{StaticResource M.ShadowLayer}"
+                        MinWidth="{StaticResource Sz.CardMinWidth}"
+                        CornerRadius="{StaticResource R.card}"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource Brush.Card.StrokeInner}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource Brush.Card.Bg}" />
+                            <Style.Triggers>
+                                <!-- hover 提亮：瞬时 Setter，不做动画（这点动静不值得一条 Storyboard） -->
+                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource Brush.Card.BgHover}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+
+                    <Grid>
+                        <!-- ===== 折叠态：色点 + 最近一项名称 + 倒计时 ===== -->
+                        <ContentControl Content="{Binding Compact}"
+                                        ContentTemplate="{StaticResource Tpl.Compact}"
+                                        Margin="{StaticResource Pad.Card.Compact}"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentControl.Style>
+                                <Style TargetType="ContentControl">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <!-- 已暂停：整块降透明度，一眼可辨（不用高饱和警示色） -->
+                                        <DataTrigger Binding="{Binding Compact.IsPaused}" Value="True">
+                                            <Setter Property="Opacity" Value="0.72" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ContentControl.Style>
+                        </ContentControl>
+
+                        <!-- ===== 展开态：四路倒计时 =====
+                             宽度固定 16 + 144 + 16 = 176：避免时间文本宽度变化每秒触发
+                             SizeToContent 重排（那会连带触发图标窗的 UpdatePlacement）。 -->
+                        <StackPanel Width="{StaticResource Sz.ExpandedContent}"
+                                    Margin="{StaticResource Pad.Card.Expanded}">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <!-- 尺寸不能做动画（会与 SizeToContent 打架），
+                                                 只用 140ms 透明度淡入消解硬切的廉价感；一次性触发。 -->
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         From="0" To="1"
+                                                                         Duration="{StaticResource Dur.Fade}">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <CubicEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+
+                            <TextBlock Text="{Binding Header}"
+                                       FontFamily="{StaticResource Font.Small}"
+                                       FontSize="{StaticResource Fs.Caption}" FontWeight="Medium"
+                                       Foreground="{DynamicResource Brush.Text.Tertiary}"
+                                       Margin="{StaticResource M.Header}" />
+
+                            <!-- Rows 顺序恒为 护眼 → 久坐 → 补水 → 运动，与图标竖排顺序一致；
+                                 集合实例恒定、只改属性，1Hz 刷新不产生容器增删。 -->
+                            <ItemsControl ItemsSource="{Binding Rows}"
+                                          ItemTemplate="{StaticResource Tpl.Row}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Border>
+        </Border>
     </Border>
 </Window>
